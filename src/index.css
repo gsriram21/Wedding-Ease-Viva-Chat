@@ -127,6 +127,12 @@
   animation: gradient-shift 8s ease-in-out infinite;
 }
 
+.soft-pink-gradient {
+  background: linear-gradient(-45deg, #fdf2f8, #fce7f3, #fbcfe8, #f9a8d4, #f472b6);
+  background-size: 400% 400%;
+  animation: gradient-shift 12s ease-in-out infinite;
+}
+
 .float-animation {
   animation: float 6s ease-in-out infinite;
 }
