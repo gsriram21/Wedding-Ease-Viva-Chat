@@ -150,69 +150,87 @@ const Index = () => {
   }
 
   return (
-    <div className="soft-pink-gradient min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background blurred orbs and shapes */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-pink-200/30 rounded-full blur-xl animate-pulse"></div>
-        <div className="absolute top-1/3 right-1/3 w-24 h-24 bg-rose-200/40 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-        <div className="absolute bottom-1/3 left-1/3 w-40 h-40 bg-pink-300/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
-        <div className="absolute top-2/3 right-1/4 w-28 h-28 bg-coral-200/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '3s' }}></div>
-        <div className="absolute bottom-1/4 right-1/2 w-36 h-20 bg-pink-200/25 rounded-full blur-xl animate-pulse" style={{ animationDelay: '4s' }}></div>
-      </div>
+    <div className="gradient-bg min-h-screen flex items-center justify-center p-6">
+      <div className="text-center max-w-2xl mx-auto w-full">
+        {/* Floating particles */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-primary/30 rounded-full float-animation" style={{ animationDelay: '0s' }}></div>
+          <div className="absolute top-1/3 right-1/3 w-1 h-1 bg-primary/40 rounded-full float-animation" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute bottom-1/3 left-1/3 w-3 h-3 bg-primary/20 rounded-full float-animation" style={{ animationDelay: '2s' }}></div>
+          <div className="absolute top-2/3 right-1/4 w-2 h-2 bg-primary/35 rounded-full float-animation" style={{ animationDelay: '3s' }}></div>
+        </div>
 
-      <div className="text-center max-w-2xl mx-auto w-full relative z-10">
-        {/* Welcome text */}
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-12 tracking-tight leading-tight">
-          Welcome to EaseBot
-          <span className="block text-lg md:text-xl font-normal text-gray-600 mt-4">
-            Chat with your personal wedding planning companion
-          </span>
-        </h1>
-
-        {/* Action buttons */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          {actionButtons.map((button, index) => (
-            <Button
-              key={index}
-              onClick={() => handleQuickAction(button.action)}
-              variant="outline"
-              className="h-auto p-4 bg-gradient-to-r from-pink-100/50 to-rose-100/50 border-pink-200/50 hover:bg-gradient-to-r hover:from-pink-200/60 hover:to-rose-200/60 hover:border-pink-300/60 rounded-full group transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-xl backdrop-blur-sm"
-            >
-              <div className="flex flex-col items-center gap-2">
-                <button.icon className="w-5 h-5 text-pink-600 group-hover:scale-110 transition-transform duration-200" />
-                <span className="text-xs font-medium text-gray-700">{button.text}</span>
+        {/* Main content */}
+        <div className="relative z-10">
+          {/* AI Icon with glow effect */}
+          <div className="mb-8 flex justify-center">
+            <div className="relative">
+              <div className="w-20 h-20 bg-white/80 backdrop-blur-sm rounded-3xl flex items-center justify-center pulse-glow shadow-2xl">
+                <MessageSquare className="w-10 h-10 text-primary" />
               </div>
-            </Button>
-          ))}
-        </div>
-
-        {/* Input area */}
-        <div className="bg-white/40 backdrop-blur-md rounded-3xl p-4 shadow-xl border border-white/30">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 relative">
-              <Input
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Ask me anything about wedding planning..."
-                className="pr-12 bg-white/60 border-pink-200/30 rounded-2xl focus:border-pink-300 focus:ring-pink-200/30 text-base py-3 backdrop-blur-sm"
-              />
-              <Sparkles className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-pink-400" />
+              <div className="absolute -top-2 -right-2">
+                <Sparkles className="w-5 h-5 text-primary animate-pulse" />
+              </div>
             </div>
-            
-            <Button
-              onClick={handleSendMessage}
-              disabled={!inputText.trim()}
-              className="bg-gradient-to-r from-pink-400 to-rose-400 hover:from-pink-500 hover:to-rose-500 text-white rounded-2xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-1"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
           </div>
-        </div>
 
-        <p className="text-xs text-gray-500 mt-4">
-          Start typing to begin your wedding planning journey
-        </p>
+          {/* Welcome text */}
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4 tracking-tight">
+            Wedding Ease
+            <span className="block text-3xl md:text-4xl text-primary mt-2">
+              AI Assistant
+            </span>
+          </h1>
+          
+          <p className="text-lg text-gray-600 mb-12 leading-relaxed max-w-lg mx-auto">
+            Your personal wedding planning companion. Ask me anything about venues, budgets, timelines, or dream details.
+          </p>
+
+          {/* Action buttons */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+            {actionButtons.map((button, index) => (
+              <Button
+                key={index}
+                onClick={() => handleQuickAction(button.action)}
+                variant="outline"
+                className="h-auto p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20 hover:bg-gradient-to-r hover:from-primary/20 hover:to-primary/10 hover:border-primary/30 rounded-2xl group transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-xl"
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <button.icon className="w-5 h-5 text-primary group-hover:scale-110 transition-transform duration-200" />
+                  <span className="text-xs font-medium text-gray-700">{button.text}</span>
+                </div>
+              </Button>
+            ))}
+          </div>
+
+          {/* Input area */}
+          <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-4 shadow-xl border border-white/20">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 relative">
+                <Input
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  placeholder="Ask me anything about wedding planning..."
+                  className="pr-12 bg-white/70 border-primary/20 rounded-2xl focus:border-primary focus:ring-primary/20 text-base py-3"
+                />
+                <Sparkles className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-primary/40" />
+              </div>
+              
+              <Button
+                onClick={handleSendMessage}
+                disabled={!inputText.trim()}
+                className="bg-primary hover:bg-primary/90 text-white rounded-2xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-1"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 mt-4">
+            Start typing to begin your wedding planning journey
+          </p>
+        </div>
       </div>
     </div>
   );
