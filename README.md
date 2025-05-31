@@ -1,5 +1,11 @@
 # Welcome to your Lovable project
 
+## UI
+
+<img width="1502" alt="image" src="https://github.com/user-attachments/assets/fa662ab6-28b8-4fc0-8f11-81976bbebabf" />
+<img width="1505" alt="image" src="https://github.com/user-attachments/assets/4622a47b-8eb8-46a7-93b7-5bb6f65df1ac" />
+
+
 ## Project info
 The WeddingEase AI-powered chatbot is a first-of-its-kind, intelligent wedding planning assistant. This chatbot is designed to assist clients with culturally personalized, region- and caste-specific wedding planning support — from rituals and attire suggestions to gifting, décor, stationery, and etiquette. It also serves as a multifunctional  stylist, powered both by AI and real stylers/designers available for live consultation.
 
