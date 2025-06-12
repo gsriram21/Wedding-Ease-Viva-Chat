@@ -68,7 +68,7 @@ const Index = () => {
 
   if (isExpanded && messages.length > 0) {
     return (
-      <div className="gradient-bg flex flex-col h-screen">
+      <div className="flex flex-col h-screen" style={{background: 'linear-gradient(-45deg, #f8f4f3, #f2d7d5, #e8b5b3, #e07a5f)'}}>
         {/* Header */}
         <div className="py-6" />
 
