@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,19 +27,20 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import '@fontsource/lato';
 
-interface Message {
-  id: string;
-  text: string;
-  sender: 'user' | 'ai';
-  timestamp: Date;
-}
-
-interface ChatHistory {
-  id: string;
-  title: string;
-  lastMessage: string;
-  timestamp: Date;
-}
+// Import the chat history service
+import {
+  Message,
+  ChatSession,
+  createNewChatSession,
+  getAllChatSessions,
+  getChatSession,
+  getCurrentChatSession,
+  setCurrentChatSession,
+  addMessageToSession,
+  getSessionMessages,
+  updateMessageInSession,
+  searchChatSessions
+} from '@/lib/chat-history';
 
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -56,50 +57,52 @@ const Index = () => {
   const [editedText, setEditedText] = useState('');
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set());
 
-  // Mock chat history data
-  const [chatHistory, setChatHistory] = useState<ChatHistory[]>([
-    {
-      id: '1',
-      title: 'Wedding Venue Ideas',
-      lastMessage: 'What about outdoor venues?',
-      timestamp: new Date()
-    },
-    {
-      id: '2',
-      title: 'Catering Options',
-      lastMessage: 'Tell me about buffet vs plated dinner',
-      timestamp: new Date()
-    },
-    {
-      id: '3',
-      title: 'Budget Planning',
-      lastMessage: 'Help me allocate my $25k budget',
-      timestamp: new Date(new Date().setDate(new Date().getDate() - 1))
-    },
-    {
-      id: '4',
-      title: 'Short Film Script Writing Assistance',
-      lastMessage: 'How to handle plus-ones?',
-      timestamp: new Date(new Date().setDate(new Date().getDate() - 3))
-    },
-    {
-      id: '5',
-      title: 'Tips for Starting Wedding Shopping',
-      lastMessage: 'Candid vs. posed shots?',
-      timestamp: new Date(new Date().setDate(new Date().getDate() - 5))
-    }
-  ]);
+  // Replace mock chat history with real chat history
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Load chat history on component mount
+  useEffect(() => {
+    const loadChatHistory = () => {
+      const sessions = getAllChatSessions();
+      setChatHistory(sessions);
+      
+      // Load current session if exists
+      const currentSession = getCurrentChatSession();
+      if (currentSession) {
+        setCurrentSessionId(currentSession.id);
+        setMessages(currentSession.messages);
+        if (currentSession.messages.length > 0) {
+          setIsExpanded(true);
+        }
+      }
+    };
+    
+    loadChatHistory();
+  }, []);
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
+    // Create new session if none exists
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      const newSession = createNewChatSession();
+      sessionId = newSession.id;
+      setCurrentSessionId(sessionId);
+      
+      // Refresh chat history to show new session
+      setChatHistory(getAllChatSessions());
+    }
+
+    // Add user message to session
+    const userMessage = addMessageToSession(sessionId, {
       text: inputText,
       sender: 'user',
       timestamp: new Date()
-    };
+    });
 
+    // Update local messages state
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsTyping(true);
@@ -107,14 +110,18 @@ const Index = () => {
 
     // Simulate AI response
     setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        text: generateAIResponse(inputText),
+      const aiResponseText = generateAIResponse(inputText);
+      const aiMessage = addMessageToSession(sessionId!, {
+        text: aiResponseText,
         sender: 'ai',
         timestamp: new Date()
-      };
-      setMessages(prev => [...prev, aiResponse]);
+      });
+      
+      setMessages(prev => [...prev, aiMessage]);
       setIsTyping(false);
+      
+      // Refresh chat history to update last message and timestamp
+      setChatHistory(getAllChatSessions());
     }, 1000 + Math.random() * 1000);
   };
 
@@ -169,10 +176,8 @@ const Index = () => {
     return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(date);
   };
 
-  const filteredChatHistory = chatHistory.filter(chat =>
-    chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Updated to use search function from chat history service
+  const filteredChatHistory = searchChatSessions(searchQuery);
 
   // Group chats by date
   const groupedChats = filteredChatHistory.reduce((acc, chat) => {
@@ -182,33 +187,30 @@ const Index = () => {
     }
     acc[dateKey].push(chat);
     return acc;
-  }, {} as Record<string, ChatHistory[]>);
+  }, {} as Record<string, ChatSession[]>);
 
   const startNewChat = () => {
+    // Create a new chat session
+    const newSession = createNewChatSession();
+    setCurrentSessionId(newSession.id);
     setMessages([]);
     setIsExpanded(false);
     setInputText('');
+    
+    // Refresh chat history to show new session
+    setChatHistory(getAllChatSessions());
   };
 
   const loadChat = (chatId: string) => {
-    // Mock function - in real app would load actual chat messages
-    const chat = chatHistory.find(c => c.id === chatId);
-    if (chat) {
-      // Simulate loading a previous chat
-      setMessages([
-        {
-          id: '1',
-          text: chat.lastMessage,
-          sender: 'user',
-          timestamp: chat.timestamp
-        },
-        {
-          id: '2',
-          text: "I'd be happy to help you with that! Let me provide some suggestions...",
-          sender: 'ai',
-          timestamp: new Date(chat.timestamp.getTime() + 30000)
-        }
-      ]);
+    // Set as current session
+    setCurrentChatSession(chatId);
+    setCurrentSessionId(chatId);
+    
+    // Load actual chat messages
+    const sessionMessages = getSessionMessages(chatId);
+    setMessages(sessionMessages);
+    
+    if (sessionMessages.length > 0) {
       setIsExpanded(true);
     }
   };
@@ -216,8 +218,14 @@ const Index = () => {
   // Message action functions
   const copyMessage = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
-      // Could add a toast notification here
+      const { copyToClipboard } = await import('@/lib/clipboard');
+      const result = await copyToClipboard(text);
+      
+      if (!result.success) {
+        console.error('Failed to copy text:', result.error);
+        // Could add a toast notification here for error
+      }
+      // Success case - no UI change as requested
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -251,12 +259,22 @@ const Index = () => {
   };
 
   const saveEditedMessage = () => {
-    if (editingMessage) {
-      setMessages(prev => prev.map(msg => 
-        msg.id === editingMessage.id 
-          ? { ...msg, text: editedText }
-          : msg
-      ));
+    if (editingMessage && currentSessionId) {
+      // Update in storage
+      const success = updateMessageInSession(currentSessionId, editingMessage.id, editedText);
+      
+      if (success) {
+        // Update local state
+        setMessages(prev => prev.map(msg => 
+          msg.id === editingMessage.id 
+            ? { ...msg, text: editedText }
+            : msg
+        ));
+        
+        // Refresh chat history if last message was updated
+        setChatHistory(getAllChatSessions());
+      }
+      
       setEditingMessage(null);
       setEditedText('');
     }
