@@ -555,7 +555,7 @@ const Index = () => {
         
         {/* Edit Message Dialog */}
         <Dialog open={!!editingMessage} onOpenChange={() => setEditingMessage(null)}>
-          <DialogContent className="sm:max-w-4xl bg-white/95 backdrop-blur-sm border border-white/20">
+          <DialogContent className="sm:max-w-4xl bg-white/80 backdrop-blur-sm border border-white/20">
             <DialogHeader>
               <DialogTitle className="elegant-heading">Edit Response</DialogTitle>
               <DialogDescription>
