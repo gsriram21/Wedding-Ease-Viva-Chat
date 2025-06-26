@@ -123,8 +123,17 @@
 .gradient-bg {
   background: linear-gradient(-45deg, #f8f4f3, #f2d7d5, #e8b5b3, #e07a5f);
   background-size: 400% 400%;
-  animation: gradient-shift 8s ease-in-out infinite;
+  animation: gradient-shift 15s ease infinite;
   position: relative;
+  overflow: hidden;
+}
+
+.gradient-bg-expanded {
+  background: linear-gradient(-45deg, #f8f4f3, #f2d7d5, #e8b5b3, #e07a5f);
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+  position: relative;
+  overflow: hidden;
 }
 
 .gradient-bg::before {
@@ -149,4 +158,10 @@
 
 .pulse-glow {
   animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.elegant-heading {
+  font-family: 'Playfair Display', serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
