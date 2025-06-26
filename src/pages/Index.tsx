@@ -25,6 +25,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
+import MarkdownRenderer from '@/components/ui/MarkdownRenderer';
 import '@fontsource/lato';
 
 // Import the chat history service
@@ -126,14 +127,141 @@ const Index = () => {
   };
 
   const generateAIResponse = (userInput: string): string => {
-    const responses = [
-      "That's a wonderful idea! For wedding planning, I'd recommend starting with your budget and guest count. This will help guide all other decisions.",
-      "I love helping with wedding details! Let me suggest some beautiful options that would work perfectly for your special day.",
-      "Wedding planning can feel overwhelming, but we'll take it step by step. What aspect of your wedding are you most excited about?",
-      "That's such a romantic choice! Have you considered how this might complement your overall wedding theme and venue?",
-      "Great question! Based on current wedding trends and timeless elegance, here are some ideas that might inspire you..."
+    const input = userInput.toLowerCase();
+    
+    // Generate contextual responses with beautiful markdown formatting
+    if (input.includes('budget') || input.includes('cost') || input.includes('price')) {
+      return `## 💰 Wedding Budget Planning
+
+**Great question!** Let me help you create a realistic wedding budget. Here's a breakdown of typical wedding expenses:
+
+### Major Categories
+- **Venue & Catering** (40-50% of budget)
+- **Photography & Videography** (10-15%)
+- **Flowers & Decorations** (8-10%)
+- **Attire & Beauty** (8-10%)
+- **Music & Entertainment** (8-10%)
+
+> **💡 Pro Tip:** Always add a 10-15% buffer for unexpected expenses!
+
+Would you like me to help you break down any specific category?`;
+    }
+    
+    if (input.includes('timeline') || input.includes('plan') || input.includes('schedule')) {
+      return `## 📅 Wedding Planning Timeline
+
+Here's your **step-by-step timeline** to ensure everything goes smoothly:
+
+### 12+ Months Before
+- [ ] Set your budget
+- [ ] Book your venue
+- [ ] Choose your wedding party
+
+### 6-8 Months Before
+- [ ] Send save-the-dates
+- [ ] Book major vendors (photographer, caterer, DJ)
+- [ ] Order wedding dress
+
+### 2-3 Months Before
+- [ ] Send invitations
+- [ ] Finalize menu and headcount
+- [ ] Schedule final fittings
+
+*Need help with any specific timeline item?*`;
+    }
+    
+    if (input.includes('style') || input.includes('theme') || input.includes('inspiration')) {
+      return `## ✨ Wedding Style Inspiration
+
+Let's discover your perfect wedding aesthetic! Here are some **trending styles** for 2024:
+
+### Popular Themes
+1. **Romantic Garden** 🌸
+   - Soft pastels, florals, natural textures
+   
+2. **Modern Minimalist** 🤍
+   - Clean lines, neutral tones, elegant simplicity
+   
+3. **Boho Chic** 🌿
+   - Earthy tones, macrame, wildflowers
+   
+4. **Classic Elegance** 💎
+   - Timeless colors, traditional elements
+
+> Which of these resonates with your vision? I can provide more specific ideas based on your preference!`;
+    }
+    
+    if (input.includes('venue') || input.includes('location')) {
+      return `## 🏰 Venue Selection Guide
+
+Choosing the **perfect venue** sets the tone for your entire celebration:
+
+### Venue Types to Consider
+| Type | Pros | Best For |
+|------|------|----------|
+| **Garden/Outdoor** | Natural beauty, photo opportunities | Spring/Summer weddings |
+| **Ballroom/Hotel** | All-inclusive, weather-proof | Formal celebrations |
+| **Barn/Rustic** | Charming, customizable | Casual, country themes |
+| **Beach/Waterfront** | Stunning views, romantic | Destination weddings |
+
+### Key Questions to Ask:
+- What's included in the package?
+- Are there vendor restrictions?
+- What's the backup plan for weather?
+
+*Tell me about your dream venue and I'll help you find similar options!*`;
+    }
+    
+    // Default responses with markdown formatting
+    const defaultResponses = [
+      `## 💕 Welcome to Your Wedding Journey!
+
+I'm **so excited** to help you plan your perfect day! Wedding planning can feel overwhelming, but we'll take it *step by step*.
+
+### How I Can Help:
+- **Budget planning** and cost breakdowns
+- **Timeline creation** and vendor coordination  
+- **Style inspiration** and theme development
+- **Vendor recommendations** and tips
+
+> What aspect of your wedding are you most excited about? 💍`,
+
+      `## 🌟 Beautiful Wedding Ideas
+
+That's such a **romantic choice!** Here are some ways to make it even more special:
+
+### Things to Consider:
+- How does this fit with your overall **wedding theme**?
+- What's your **venue style** and setting?
+- What **season** are you planning for?
+
+*I'd love to help you develop this idea further - tell me more about your vision!* ✨`,
+
+      `## 💐 Perfect Wedding Planning
+
+**I love helping with wedding details!** Let me suggest some beautiful options that would work perfectly for your special day.
+
+### Current Trends:
+- Sustainable and eco-friendly choices 🌱
+- Personalized touches and DIY elements 🎨  
+- Multi-cultural celebration blends 🌍
+- Intimate gatherings with meaningful details 💝
+
+> What specific area would you like to explore together?`,
+
+      `## 🎊 Your Dream Wedding Awaits
+
+**Great question!** Based on current wedding trends and timeless elegance, here are some ideas that might inspire you:
+
+### Key Principles:
+1. **Stay true to your style** - authenticity is beautiful
+2. **Focus on the experience** - create lasting memories
+3. **Don't forget the details** - they make all the difference
+
+*What's the most important element of your wedding day to you?* 💕`
     ];
-    return responses[Math.floor(Math.random() * responses.length)];
+    
+    return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
   };
 
   const actionButtons = [
@@ -626,7 +754,7 @@ const Index = () => {
               ) : (
                 <div className="max-w-xs md:max-w-md lg:max-w-lg text-gray-700 group">
                   <div className="mb-2">
-                    <p className="text-sm leading-relaxed">{message.text}</p>
+                    <MarkdownRenderer content={message.text} />
                   </div>
                   {/* Action buttons */}
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
