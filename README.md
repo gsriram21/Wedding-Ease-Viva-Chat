@@ -1,4 +1,4 @@
-# Welcome to your Lovable project
+
 
 ## UI mockups - Landing page + Expanded chat view
 
