@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3 } from 'lucide-react';
+import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -483,19 +483,79 @@ ${getFallbackResponse()}`;
     }
   };
 
+  // State for copy feedback
+  const [copiedMessageIds, setCopiedMessageIds] = useState<Set<string>>(new Set());
+
   // Message action functions
-  const copyMessage = async (text: string) => {
+  const copyMessage = async (text: string, messageId?: string) => {
+    // Show immediate feedback - optimistic UI update
+    if (messageId) {
+      setCopiedMessageIds(prev => new Set([...prev, messageId]));
+    }
+    
     try {
       const { copyToClipboard } = await import('@/lib/clipboard');
       const result = await copyToClipboard(text);
       
-      if (!result.success) {
+      if (result.success) {
+        // Copy succeeded, keep the checkmark for 1.1 seconds
+        if (messageId) {
+          setTimeout(() => {
+            setCopiedMessageIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(messageId);
+              return newSet;
+            });
+          }, 1100);
+        }
+      } else {
         console.error('Failed to copy text:', result.error);
-        // Could add a toast notification here for error
+        // Copy failed, try fallback and remove checkmark immediately if it fails
+        try {
+          const retryResult = await copyToClipboard(text, { fallbackMethod: true });
+          if (retryResult.success) {
+            // Retry succeeded, keep checkmark for 1.1 seconds
+            if (messageId) {
+              setTimeout(() => {
+                setCopiedMessageIds(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(messageId);
+                  return newSet;
+                });
+              }, 1100);
+            }
+          } else {
+            // Both attempts failed, remove checkmark immediately
+            if (messageId) {
+              setCopiedMessageIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(messageId);
+                return newSet;
+              });
+            }
+          }
+        } catch (retryErr) {
+          console.error('Retry copy failed:', retryErr);
+          // Remove checkmark on error
+          if (messageId) {
+            setCopiedMessageIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(messageId);
+              return newSet;
+            });
+          }
+        }
       }
-      // Success case - no UI change as requested
     } catch (err) {
       console.error('Failed to copy text: ', err);
+      // Remove checkmark on error
+      if (messageId) {
+        setCopiedMessageIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(messageId);
+          return newSet;
+        });
+      }
     }
   };
 
@@ -547,8 +607,6 @@ ${getFallbackResponse()}`;
       setEditedText('');
     }
   };
-
-
 
   // Sidebar Toggle Button
   const SidebarToggle = () => (
@@ -817,11 +875,15 @@ ${getFallbackResponse()}`;
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyMessage(message.text)}
+                      onClick={() => copyMessage(message.text, message.id)}
                       className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
-                      title="Copy"
+                      title={copiedMessageIds.has(message.id) ? "Copied!" : "Copy"}
                     >
-                      <Copy className="h-4 w-4 text-gray-500" />
+                      {copiedMessageIds.has(message.id) ? (
+                        <Check className="h-4 w-4 text-gray-500" />
+                      ) : (
+                        <Copy className="h-4 w-4 text-gray-500" />
+                      )}
                     </Button>
                     <Button
                       variant="ghost"
@@ -844,11 +906,15 @@ ${getFallbackResponse()}`;
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyMessage(message.text)}
+                      onClick={() => copyMessage(message.text, message.id)}
                       className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
-                      title="Copy"
+                      title={copiedMessageIds.has(message.id) ? "Copied!" : "Copy"}
                     >
-                      <Copy className="h-4 w-4 text-gray-500" />
+                      {copiedMessageIds.has(message.id) ? (
+                        <Check className="h-4 w-4 text-gray-500" />
+                      ) : (
+                        <Copy className="h-4 w-4 text-gray-500" />
+                      )}
                     </Button>
                     <Button
                       variant="ghost"
