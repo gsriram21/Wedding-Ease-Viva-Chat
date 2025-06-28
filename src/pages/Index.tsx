@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,122 @@ import {
 
 // Import the OpenAI service
 import { generateAIResponse, generateStreamingAIResponse, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
+
+// Sidebar Component - moved outside to prevent recreation and focus loss
+interface SidebarProps {
+  isSidebarOpen: boolean;
+  isAssetsOpen: boolean;
+  setIsAssetsOpen: (open: boolean) => void;
+  searchInputValue: string;
+  setSearchInputValue: (value: string) => void;
+  groupedChats: Record<string, ChatSession[]>;
+  filteredChatHistory: ChatSession[];
+  startNewChat: () => void;
+  loadChat: (chatId: string) => void;
+}
+
+const Sidebar = React.memo<SidebarProps>(({ 
+  isSidebarOpen, 
+  isAssetsOpen, 
+  setIsAssetsOpen, 
+  searchInputValue, 
+  setSearchInputValue, 
+  groupedChats, 
+  filteredChatHistory, 
+  startNewChat, 
+  loadChat 
+}) => (
+  <div className={`fixed left-0 top-0 h-full bg-white/45 backdrop-blur-sm border-r border-white/20 shadow-lg transition-all duration-300 z-30 font-['Lato',sans-serif] ${
+    isSidebarOpen ? 'w-72' : 'w-0'
+  } overflow-hidden`}>
+    <div className="p-3 h-full flex flex-col mt-14">
+      {/* New Chat Button */}
+      <Button 
+        onClick={startNewChat}
+        className="w-full mb-3 text-gray-800 rounded-xl border border-rose-200/50 shadow-sm hover:shadow-md transition-all duration-200 bg-transparent hover:bg-transparent text-sm font-medium"
+        style={{ backgroundColor: '#e8b5b3', backgroundImage: 'none', background: '#e8b5b3' }}
+      >
+        <Plus className="mr-2 h-3 w-3" />
+        New Chat
+      </Button>
+
+      {/* Search */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" />
+        <Input
+          placeholder="Search chats..."
+          value={searchInputValue}
+          onChange={(e) => setSearchInputValue(e.target.value)}
+          className="pl-9 bg-white/70 border-gray-200 rounded-xl text-sm"
+        />
+      </div>
+
+      {/* Assets Dropdown */}
+      <Collapsible open={isAssetsOpen} onOpenChange={setIsAssetsOpen} className="mb-5">
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="w-full justify-between bg-white/70 border-gray-200 rounded-xl text-sm font-medium">
+            <span className="flex items-center">
+              <Bookmark className="mr-2 h-3 w-3" />
+              Assets
+            </span>
+            {isAssetsOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2 space-y-1">
+          <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
+            <Bookmark className="mr-2 h-3 w-3" />
+            Saved Items
+          </Button>
+          <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
+            <Image className="mr-2 h-3 w-3" />
+            Moodboard
+          </Button>
+          <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
+            <CheckSquare className="mr-2 h-3 w-3" />
+            Checklist
+          </Button>
+          <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
+            <ShoppingCart className="mr-2 h-3 w-3" />
+            Shopping Lists
+          </Button>
+          <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
+            <DollarSign className="mr-2 h-3 w-3" />
+            Budgets
+          </Button>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Chat History Section */}
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        <h3 className="text-base font-semibold text-gray-800 mb-3 px-2 flex-shrink-0">Chat History</h3>
+        <div className="flex-1 overflow-y-auto -mr-3 pr-3 space-y-3 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+          {Object.entries(groupedChats).map(([date, chats]) => (
+            <div key={date}>
+              <h4 className="text-xs font-semibold text-gray-500/90 mb-2 px-2 uppercase tracking-wider" style={{ fontSize: '9px' }}>{date}</h4>
+              <div className="space-y-1">
+                {chats.map((chat) => (
+                  <Button
+                    key={chat.id}
+                    variant="ghost"
+                    onClick={() => loadChat(chat.id)}
+                    className="w-full justify-start text-left h-auto bg-transparent hover:bg-white/60 rounded-lg text-sm font-normal text-gray-700 hover:text-gray-900 p-2"
+                  >
+                    <span className="truncate">{chat.title}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {filteredChatHistory.length === 0 && searchInputValue && (
+            <div className="text-center text-gray-500 text-xs py-4 font-medium">
+              No chats found matching "{searchInputValue}"
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+));
 
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -295,18 +411,43 @@ ${getFallbackResponse()}`;
     return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(date);
   };
 
-  // Updated to use search function from chat history service
-  const filteredChatHistory = searchChatSessions(searchQuery);
+  // Search functionality with debouncing to prevent focus loss
+  const [searchInputValue, setSearchInputValue] = useState('');
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Group chats by date
-  const groupedChats = filteredChatHistory.reduce((acc, chat) => {
-    const dateKey = formatDateGroup(chat.timestamp);
-    if (!acc[dateKey]) {
-      acc[dateKey] = [];
+  // Debounced search to prevent constant re-renders
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
     }
-    acc[dateKey].push(chat);
-    return acc;
-  }, {} as Record<string, ChatSession[]>);
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearchQuery(searchInputValue);
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchInputValue]);
+
+  // Updated to use search function from chat history service with memoization
+  const filteredChatHistory = useMemo(() => {
+    return searchChatSessions(searchQuery);
+  }, [searchQuery, chatHistory]);
+
+  // Group chats by date with memoization
+  const groupedChats = useMemo(() => {
+    return filteredChatHistory.reduce((acc, chat) => {
+      const dateKey = formatDateGroup(chat.timestamp);
+      if (!acc[dateKey]) {
+        acc[dateKey] = [];
+      }
+      acc[dateKey].push(chat);
+      return acc;
+    }, {} as Record<string, ChatSession[]>);
+  }, [filteredChatHistory]);
 
   const startNewChat = () => {
     // Don't create a session until user sends first message
@@ -407,99 +548,7 @@ ${getFallbackResponse()}`;
     }
   };
 
-  // Sidebar Component
-  const Sidebar = () => (
-    <div className={`fixed left-0 top-0 h-full bg-white/45 backdrop-blur-sm border-r border-white/20 shadow-lg transition-all duration-300 z-30 font-['Lato',sans-serif] ${
-      isSidebarOpen ? 'w-72' : 'w-0'
-    } overflow-hidden`}>
-      <div className="p-3 h-full flex flex-col mt-14">
-        {/* New Chat Button */}
-        <Button 
-          onClick={startNewChat}
-          className="w-full mb-3 text-gray-800 rounded-xl border border-rose-200/50 shadow-sm hover:shadow-md transition-all duration-200 bg-transparent hover:bg-transparent text-sm font-medium"
-          style={{ backgroundColor: '#e8b5b3', backgroundImage: 'none', background: '#e8b5b3' }}
-        >
-          <Plus className="mr-2 h-3 w-3" />
-          New Chat
-        </Button>
 
-        {/* Search */}
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" />
-          <Input
-            placeholder="Search chats..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-white/70 border-gray-200 rounded-xl text-sm"
-          />
-        </div>
-
-        {/* Assets Dropdown */}
-        <Collapsible open={isAssetsOpen} onOpenChange={setIsAssetsOpen} className="mb-5">
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="w-full justify-between bg-white/70 border-gray-200 rounded-xl text-sm font-medium">
-              <span className="flex items-center">
-                <Bookmark className="mr-2 h-3 w-3" />
-                Assets
-              </span>
-              {isAssetsOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2 space-y-1">
-            <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
-              <Bookmark className="mr-2 h-3 w-3" />
-              Saved Items
-            </Button>
-            <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
-              <Image className="mr-2 h-3 w-3" />
-              Moodboard
-            </Button>
-            <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
-              <CheckSquare className="mr-2 h-3 w-3" />
-              Checklist
-            </Button>
-            <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
-              <ShoppingCart className="mr-2 h-3 w-3" />
-              Shopping Lists
-            </Button>
-            <Button variant="ghost" className="w-full justify-start text-xs py-1.5 h-auto font-medium">
-              <DollarSign className="mr-2 h-3 w-3" />
-              Budgets
-            </Button>
-          </CollapsibleContent>
-        </Collapsible>
-
-        {/* Chat History Section */}
-        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          <h3 className="text-base font-semibold text-gray-800 mb-3 px-2 flex-shrink-0">Chat History</h3>
-          <div className="flex-1 overflow-y-auto -mr-3 pr-3 space-y-3 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-            {Object.entries(groupedChats).map(([date, chats]) => (
-              <div key={date}>
-                <h4 className="text-xs font-semibold text-gray-500/90 mb-2 px-2 uppercase tracking-wider" style={{ fontSize: '9px' }}>{date}</h4>
-                <div className="space-y-1">
-                  {chats.map((chat) => (
-                    <Button
-                      key={chat.id}
-                      variant="ghost"
-                      onClick={() => loadChat(chat.id)}
-                      className="w-full justify-start text-left h-auto bg-transparent hover:bg-white/60 rounded-lg text-sm font-normal text-gray-700 hover:text-gray-900 p-2"
-                    >
-                      <span className="truncate">{chat.title}</span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {filteredChatHistory.length === 0 && searchQuery && (
-              <div className="text-center text-gray-500 text-xs py-4 font-medium">
-                No chats found matching "{searchQuery}"
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   // Sidebar Toggle Button
   const SidebarToggle = () => (
@@ -690,7 +739,17 @@ ${getFallbackResponse()}`;
         isSidebarOpen ? 'pl-72' : 'pl-0'
       }`}>
         {/* Sidebar */}
-        <Sidebar />
+        <Sidebar
+          isSidebarOpen={isSidebarOpen}
+          isAssetsOpen={isAssetsOpen}
+          setIsAssetsOpen={setIsAssetsOpen}
+          searchInputValue={searchInputValue}
+          setSearchInputValue={setSearchInputValue}
+          groupedChats={groupedChats}
+          filteredChatHistory={filteredChatHistory}
+          startNewChat={startNewChat}
+          loadChat={loadChat}
+        />
         
         {/* Sidebar Toggle */}
         <SidebarToggle />
@@ -872,7 +931,17 @@ ${getFallbackResponse()}`;
       isSidebarOpen ? 'pl-72' : 'pl-0'
     }`}>
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar
+        isSidebarOpen={isSidebarOpen}
+        isAssetsOpen={isAssetsOpen}
+        setIsAssetsOpen={setIsAssetsOpen}
+        searchInputValue={searchInputValue}
+        setSearchInputValue={setSearchInputValue}
+        groupedChats={groupedChats}
+        filteredChatHistory={filteredChatHistory}
+        startNewChat={startNewChat}
+        loadChat={loadChat}
+      />
       
       {/* Sidebar Toggle */}
       <SidebarToggle />
