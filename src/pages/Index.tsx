@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +37,7 @@ import {
   getChatSession,
   getCurrentChatSession,
   setCurrentChatSession,
+  clearCurrentChatSession,
   addMessageToSession,
   getSessionMessages,
   updateMessageInSession,
@@ -65,25 +66,77 @@ const Index = () => {
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
+  // URL state management functions
+  const getSessionIdFromURL = useCallback((): string | null => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('chat');
+  }, []);
+
+  const updateURLWithSessionId = useCallback((sessionId: string | null) => {
+    const url = new URL(window.location.href);
+    if (sessionId) {
+      url.searchParams.set('chat', sessionId);
+    } else {
+      url.searchParams.delete('chat');
+    }
+    window.history.replaceState({}, '', url.toString());
+  }, []);
+
+  const loadChatFromURL = useCallback(() => {
+    const urlSessionId = getSessionIdFromURL();
+    
+    if (urlSessionId) {
+      // Try to load the session from URL
+      const session = getChatSession(urlSessionId);
+      if (session) {
+        setCurrentChatSession(urlSessionId);
+        setCurrentSessionId(urlSessionId);
+        setMessages(session.messages);
+        if (session.messages.length > 0) {
+          setIsExpanded(true);
+        }
+        return true;
+      } else {
+        // Session doesn't exist, clear URL and start fresh
+        updateURLWithSessionId(null);
+        setCurrentSessionId(null);
+        setMessages([]);
+        setIsExpanded(false);
+        return false;
+      }
+    }
+    
+    // No chat ID in URL - start completely fresh
+    // Don't load any existing session, just clear everything
+    setCurrentSessionId(null);
+    setMessages([]);
+    setIsExpanded(false);
+    
+    return false;
+  }, [getSessionIdFromURL, updateURLWithSessionId]);
+
   // Load chat history on component mount
   useEffect(() => {
     const loadChatHistory = () => {
       const sessions = getAllChatSessions();
       setChatHistory(sessions);
       
-      // Load current session if exists
-      const currentSession = getCurrentChatSession();
-      if (currentSession) {
-        setCurrentSessionId(currentSession.id);
-        setMessages(currentSession.messages);
-        if (currentSession.messages.length > 0) {
-          setIsExpanded(true);
-        }
-      }
+      // Load chat based on URL or current session
+      loadChatFromURL();
     };
     
     loadChatHistory();
-  }, []);
+  }, [loadChatFromURL]);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      loadChatFromURL();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [loadChatFromURL]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
@@ -94,6 +147,9 @@ const Index = () => {
       const newSession = createNewChatSession();
       sessionId = newSession.id;
       setCurrentSessionId(sessionId);
+      
+      // Update URL with new session
+      updateURLWithSessionId(sessionId);
       
       // Refresh chat history to show new session
       setChatHistory(getAllChatSessions());
@@ -260,6 +316,12 @@ ${getFallbackResponse()}`;
     setIsExpanded(false);
     setInputText('');
     
+    // Clear current session from localStorage
+    clearCurrentChatSession();
+    
+    // Clear URL to show fresh state
+    updateURLWithSessionId(null);
+    
     // No need to refresh chat history since no new session is created yet
   };
 
@@ -267,6 +329,9 @@ ${getFallbackResponse()}`;
     // Set as current session
     setCurrentChatSession(chatId);
     setCurrentSessionId(chatId);
+    
+    // Update URL with selected chat
+    updateURLWithSessionId(chatId);
     
     // Load actual chat messages
     const sessionMessages = getSessionMessages(chatId);

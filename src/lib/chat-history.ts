@@ -155,6 +155,15 @@ export function setCurrentChatSession(sessionId: string): void {
 }
 
 /**
+ * Clear the current active chat session
+ */
+export function clearCurrentChatSession(): void {
+  const storage = loadFromStorage();
+  storage.currentSessionId = null;
+  saveToStorage(storage);
+}
+
+/**
  * Add a message to a chat session
  */
 export function addMessageToSession(sessionId: string, message: Omit<Message, 'id'>): Message {
