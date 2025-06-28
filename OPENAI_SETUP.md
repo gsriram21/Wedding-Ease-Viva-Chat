@@ -1,97 +1,169 @@
 # OpenAI Setup Guide
 
-## 🔑 Setting Up Your OpenAI API Key
+This guide will help you set up OpenAI's GPT-4o with **real web search capabilities** using the **Responses API** for the Wedding Ease chatbot.
 
-To enable real AI responses using GPT-4o via the Responses API, you need to configure your OpenAI API key.
+## Features
 
-### Step 1: Get Your OpenAI API Key
-1. Visit [OpenAI Platform](https://platform.openai.com/)
+✨ **What you'll get with proper OpenAI setup:**
+
+- **Real-time web search integration** using OpenAI's `web_search_preview` tool
+- **Live internet access** for current wedding trends, pricing, and vendor information
+- **Automatic source citations** for transparency and verification
+- **Real-time streaming responses** that appear as the AI thinks
+- **Beautiful markdown formatting** with emojis and structured responses
+- **Conversation memory** that maintains context across messages
+- **Comprehensive wedding planning assistance** with up-to-date market data
+
+## Prerequisites
+
+1. **OpenAI Account**: Sign up at [platform.openai.com](https://platform.openai.com)
+2. **API Access**: Ensure you have access to the **Responses API** (required for web search)
+3. **API Key**: Generate an API key from your OpenAI dashboard
+4. **Billing Setup**: Configure billing to use the API services
+
+## Step-by-Step Setup
+
+### 1. Get Your OpenAI API Key
+
+1. Visit [platform.openai.com](https://platform.openai.com)
 2. Sign in or create an account
-3. Go to API Keys section
-4. Create a new API key
-5. Copy the key (starts with `sk-...`)
+3. Navigate to **API Keys** in your dashboard
+4. Click **"Create new secret key"**
+5. Copy the key (starts with `sk-`)
 
-### Step 2: Configure Environment Variables
+### 2. Configure Environment Variables
 
-#### Option A: Using .env file (Recommended for Development)
-1. Create a `.env` file in the project root:
+Create a `.env` file in your project root:
+
 ```bash
-# In the Wedding-Ease-Viva-Chat directory
-touch .env
-```
-
-2. Add your API key to the `.env` file:
-```env
+# OpenAI Configuration
 VITE_OPENAI_API_KEY=sk-your-actual-api-key-here
 ```
 
-#### Option B: Using .env.local file
-1. Create a `.env.local` file in the project root:
-```bash
-touch .env.local
-```
+**Important Security Notes:**
+- Never commit your `.env` file to version control
+- Keep your API key secure and private
+- The `.env` file is already in `.gitignore`
 
-2. Add your API key:
-```env
-VITE_OPENAI_API_KEY=sk-your-actual-api-key-here
-```
+### 3. Verify Setup
 
-### Step 3: Restart the Development Server
-```bash
-npm run dev
-```
+The application will automatically detect your API key. You can verify it's working by:
 
-## 🔒 Security Notes
+1. Starting the development server: `npm run dev`
+2. Opening the chat interface
+3. Asking a question that requires current information like:
+   - "What are the latest wedding trends for 2025?"
+   - "What's the current average cost of wedding venues?"
+   - "Show me trending wedding colors this year"
 
-**Important Security Considerations:**
+### 4. Web Search Capabilities
 
-1. **Development Only**: The current implementation uses `dangerouslyAllowBrowser: true` which exposes the API key in the browser. This is acceptable for development but **NOT for production**.
+The chatbot now uses OpenAI's **Responses API** with the `web_search_preview` tool, which provides:
 
-2. **Production Setup**: For production, you should:
-   - Move API calls to a backend server
-   - Keep the API key on the server side
-   - Use environment variables on the server
-   - Implement proper authentication
+#### **Real Web Search Features:**
+- **Live internet access** for current information
+- **Automatic search triggering** when current data is needed
+- **Source citations** with clickable links
+- **High-quality search results** with detailed context
+- **Intelligent search queries** optimized by GPT-4o
 
-3. **API Key Protection**: 
-   - Never commit your `.env` file to version control
-   - The `.env` files are already in `.gitignore`
-   - Regenerate your API key if accidentally exposed
+#### **When Web Search is Used:**
+- Current pricing information (venues, vendors, services)
+- Trending wedding styles and themes
+- Vendor recommendations in specific locations
+- Seasonal availability and considerations
+- Recent changes in wedding industry practices
+- Up-to-date legal requirements or restrictions
 
-## 🎯 Features Enabled
+## API Usage and Costs
 
-Once configured, you'll get:
-- **Real GPT-4o responses** using the latest Responses API
-- **Contextual conversations** with chat history
-- **Wedding-specific expertise** via custom prompts
-- **Fallback responses** if API fails
-- **Error handling** for quota/network issues
+### **Pricing Information**
+- **Base Model**: GPT-4o standard pricing applies
+- **Web Search**: Additional cost per search query
+- **Streaming**: Real-time response delivery included
 
-## 🔧 Troubleshooting
+### **Cost Optimization Tips**
+- The system intelligently determines when web search is needed
+- Not every query triggers a web search
+- Search results are cached within the conversation context
+- Use specific questions to get more targeted (and cost-effective) searches
 
-### API Key Not Working
-- Ensure the key starts with `sk-`
-- Check for extra spaces or quotes
-- Verify the key is active in OpenAI dashboard
+## Troubleshooting
 
-### Quota Exceeded
-- Check your OpenAI usage limits
-- Upgrade your OpenAI plan if needed
+### **Common Issues:**
 
-### Network Errors
-- Check your internet connection
-- Verify OpenAI services are operational
+#### ❌ **"OpenAI API key not found"**
+- **Solution**: Ensure your `.env` file exists and contains `VITE_OPENAI_API_KEY=sk-...`
+- **Check**: Restart the development server after adding the API key
 
-### Still Getting Fallback Responses
-- Restart the development server after adding the API key
-- Check browser console for error messages
-- Verify the environment variable name is exactly `VITE_OPENAI_API_KEY`
+#### ❌ **"Invalid API key"**
+- **Solution**: Verify your API key is correct and active
+- **Check**: Ensure you have billing configured on your OpenAI account
 
-## 💡 Testing
+#### ❌ **"Rate limit exceeded"**
+- **Solution**: You've hit your API usage limits
+- **Check**: Review your OpenAI usage dashboard and consider upgrading your plan
 
-To test if it's working:
-1. Start a new chat
-2. Ask: "Help me plan my wedding budget"
-3. You should see a personalized AI response instead of the fallback message
+#### ❌ **"Web search not working"**
+- **Solution**: Ensure you have access to the Responses API
+- **Check**: Some OpenAI accounts may need to request access to the Responses API
 
-The app will automatically detect if the API key is configured and switch between real AI responses and fallback responses accordingly. 
+### **Verification Steps:**
+
+1. **Check API Key Format**: Should start with `sk-` and be 51 characters long
+2. **Test API Access**: The app will show fallback responses if the API key is invalid
+3. **Monitor Usage**: Check your OpenAI dashboard for API usage and billing
+4. **Review Logs**: Check browser console for any error messages
+
+## Features Enabled
+
+With proper setup, your wedding planning chatbot will have:
+
+### ✅ **Real-Time Information**
+- Current wedding vendor pricing
+- Latest industry trends and styles
+- Seasonal availability updates
+- Recent regulatory changes
+
+### ✅ **Enhanced User Experience**
+- Streaming responses that appear in real-time
+- Automatic source citations for verification
+- Beautiful markdown formatting with emojis
+- Intelligent conversation flow
+
+### ✅ **Professional Quality**
+- Accurate, up-to-date information
+- Transparent source attribution
+- Comprehensive wedding planning guidance
+- Personalized recommendations
+
+## Advanced Configuration
+
+### **Custom Search Context**
+The system uses `search_context_size: 'high'` for detailed results. This can be adjusted in `src/lib/openai-service.ts` if needed.
+
+### **Search Optimization**
+The AI automatically determines when to use web search based on:
+- Query content and keywords
+- Need for current information
+- Context from conversation history
+
+## Support
+
+If you encounter issues:
+
+1. **Check the Console**: Browser developer tools often show helpful error messages
+2. **Verify Environment**: Ensure your `.env` file is properly configured
+3. **Test API Key**: Use OpenAI's API documentation to verify your key works
+4. **Review Billing**: Ensure your OpenAI account has active billing
+
+## Security Best Practices
+
+- **Never expose your API key** in client-side code in production
+- **Use environment variables** for all sensitive configuration
+- **Monitor usage** regularly to detect any unauthorized access
+- **Rotate keys** periodically for enhanced security
+
+---
+
+**🎉 Once configured, your wedding planning chatbot will have access to real-time web information, making it incredibly powerful and helpful for users planning their special day!** 

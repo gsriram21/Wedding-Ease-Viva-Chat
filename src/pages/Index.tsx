@@ -44,7 +44,7 @@ import {
 } from '@/lib/chat-history';
 
 // Import the OpenAI service
-import { generateAIResponse, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
+import { generateStreamingAIResponse, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
 
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -112,48 +112,84 @@ const Index = () => {
     setIsTyping(true);
     setIsExpanded(true);
 
-    // Generate AI response using OpenAI
+    // Generate AI response using OpenAI with streaming
     const generateResponse = async () => {
       try {
-        let aiResponseText: string;
-        
         if (isOpenAIConfigured()) {
-          // Use real OpenAI API
+          // Use real OpenAI API with streaming
           const conversationHistory = messages.map(msg => ({
             role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
             content: msg.text
           }));
           
-          const response = await generateAIResponse(inputText, conversationHistory);
+          // Create a placeholder message for streaming
+          let streamingText = '';
+          const aiMessage = addMessageToSession(sessionId!, {
+            text: '',
+            sender: 'ai',
+            timestamp: new Date()
+          });
           
-          if (response.success && response.content) {
-            aiResponseText = response.content;
+          setMessages(prev => [...prev, aiMessage]);
+          
+          const response = await generateStreamingAIResponse(
+            inputText, 
+            conversationHistory,
+            (chunk: string) => {
+              // Update the message in real-time as chunks arrive
+              streamingText += chunk;
+              
+              setMessages(prev => prev.map(msg => 
+                msg.id === aiMessage.id 
+                  ? { ...msg, text: streamingText }
+                  : msg
+              ));
+            }
+          );
+          
+          if (response.success && response.stream) {
+            // Stream is handled by the onChunk callback above
+            setIsTyping(false);
+            
+            // Update the final message in storage
+            updateMessageInSession(sessionId!, aiMessage.id, streamingText);
+            
+            // Refresh chat history to update last message and timestamp
+            setChatHistory(getAllChatSessions());
           } else {
-            // Fallback to mock response if API fails
-            aiResponseText = `## ⚠️ AI Response Error
+            // Handle streaming error
+            const errorText = `## ⚠️ AI Response Error
 
 I encountered an issue generating a response: ${response.error}
 
 Let me provide a helpful fallback response instead:
 
 ${getFallbackResponse(inputText)}`;
+            
+            setMessages(prev => prev.map(msg => 
+              msg.id === aiMessage.id 
+                ? { ...msg, text: errorText }
+                : msg
+            ));
+            
+            updateMessageInSession(sessionId!, aiMessage.id, errorText);
+            setIsTyping(false);
+            setChatHistory(getAllChatSessions());
           }
         } else {
           // Use fallback response when API key is not configured
-          aiResponseText = getFallbackResponse(inputText);
+          const aiResponseText = getFallbackResponse(inputText);
+          
+          const aiMessage = addMessageToSession(sessionId!, {
+            text: aiResponseText,
+            sender: 'ai',
+            timestamp: new Date()
+          });
+          
+          setMessages(prev => [...prev, aiMessage]);
+          setIsTyping(false);
+          setChatHistory(getAllChatSessions());
         }
-        
-        const aiMessage = addMessageToSession(sessionId!, {
-          text: aiResponseText,
-          sender: 'ai',
-          timestamp: new Date()
-        });
-        
-        setMessages(prev => [...prev, aiMessage]);
-        setIsTyping(false);
-        
-        // Refresh chat history to update last message and timestamp
-        setChatHistory(getAllChatSessions());
         
       } catch (error) {
         console.error('Error generating AI response:', error);
