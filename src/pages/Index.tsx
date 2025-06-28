@@ -44,7 +44,7 @@ import {
 } from '@/lib/chat-history';
 
 // Import the OpenAI service
-import { generateStreamingAIResponse, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
+import { generateAIResponse, generateStreamingAIResponse, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
 
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -122,63 +122,45 @@ const Index = () => {
             content: msg.text
           }));
           
-          // Create a placeholder message for streaming
-          let streamingText = '';
-          const aiMessage = addMessageToSession(sessionId!, {
-            text: '',
-            sender: 'ai',
-            timestamp: new Date()
-          });
+          // Use non-streaming version to avoid message persistence issues
+          const response = await generateAIResponse(inputText, conversationHistory);
           
-          setMessages(prev => [...prev, aiMessage]);
-          
-          const response = await generateStreamingAIResponse(
-            inputText, 
-            conversationHistory,
-            (chunk: string) => {
-              // Update the message in real-time as chunks arrive
-              streamingText += chunk;
-              
-              setMessages(prev => prev.map(msg => 
-                msg.id === aiMessage.id 
-                  ? { ...msg, text: streamingText }
-                  : msg
-              ));
-            }
-          );
-          
-          if (response.success && response.stream) {
-            // Stream is handled by the onChunk callback above
-            setIsTyping(false);
+          if (response.success && response.content) {
+            // Add the complete AI response to session
+            const aiMessage = addMessageToSession(sessionId!, {
+              text: response.content,
+              sender: 'ai',
+              timestamp: new Date()
+            });
             
-            // Update the final message in storage
-            updateMessageInSession(sessionId!, aiMessage.id, streamingText);
+            setMessages(prev => [...prev, aiMessage]);
+            setIsTyping(false);
             
             // Refresh chat history to update last message and timestamp
             setChatHistory(getAllChatSessions());
           } else {
-            // Handle streaming error
+            // Handle API error
             const errorText = `## ⚠️ AI Response Error
 
 I encountered an issue generating a response: ${response.error}
 
 Let me provide a helpful fallback response instead:
 
-${getFallbackResponse(inputText)}`;
+${getFallbackResponse()}`;
             
-            setMessages(prev => prev.map(msg => 
-              msg.id === aiMessage.id 
-                ? { ...msg, text: errorText }
-                : msg
-            ));
+            const aiMessage = addMessageToSession(sessionId!, {
+              text: errorText,
+              sender: 'ai',
+              timestamp: new Date()
+            });
             
-            updateMessageInSession(sessionId!, aiMessage.id, errorText);
+            setMessages(prev => [...prev, aiMessage]);
             setIsTyping(false);
             setChatHistory(getAllChatSessions());
           }
         } else {
           // Use fallback response when API key is not configured
-          const aiResponseText = getFallbackResponse(inputText);
+          const aiResponseText = getFallbackResponse();
           
           const aiMessage = addMessageToSession(sessionId!, {
             text: aiResponseText,
@@ -199,7 +181,7 @@ ${getFallbackResponse(inputText)}`;
 
 I'm having trouble connecting right now. Here's a helpful response based on your question:
 
-${getFallbackResponse(inputText)}`;
+${getFallbackResponse()}`;
         
         const aiMessage = addMessageToSession(sessionId!, {
           text: fallbackText,
