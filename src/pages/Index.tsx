@@ -702,9 +702,11 @@ That's such a **romantic choice!** Here are some ways to make it even more speci
         <Dialog open={!!editingMessage} onOpenChange={() => setEditingMessage(null)}>
           <DialogContent className="sm:max-w-4xl bg-white/80 backdrop-blur-sm border border-white/20">
             <DialogHeader>
-              <DialogTitle className="elegant-heading">Edit Response</DialogTitle>
+              <DialogTitle className="elegant-heading">
+                Edit {editingMessage?.sender === 'user' ? 'Message' : 'Response'}
+              </DialogTitle>
               <DialogDescription>
-                Make changes to the AI response and save your edits.
+                Make changes to the {editingMessage?.sender === 'user' ? 'message' : 'AI response'} and save your edits.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -744,11 +746,34 @@ That's such a **romantic choice!** Here are some ways to make it even more speci
               className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {message.sender === 'user' ? (
-                <div
-                  className="max-w-xs md:max-w-md lg:max-w-lg px-4 py-3 rounded-2xl border bg-white/30 text-gray-800 border-pink-100 shadow"
-                  style={{backdropFilter: 'blur(6px)'}}
-                >
-                  <p className="text-sm leading-relaxed">{message.text}</p>
+                <div className="max-w-xs md:max-w-md lg:max-w-lg text-gray-800 group">
+                  <div
+                    className="px-4 py-3 rounded-2xl border bg-white/30 border-pink-100 shadow mb-2"
+                    style={{backdropFilter: 'blur(6px)'}}
+                  >
+                    <p className="text-sm leading-relaxed">{message.text}</p>
+                  </div>
+                  {/* Action buttons for user messages */}
+                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyMessage(message.text)}
+                      className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                      title="Copy"
+                    >
+                      <Copy className="h-4 w-4 text-gray-500" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openEditDialog(message)}
+                      className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                      title="Edit message"
+                    >
+                      <Edit3 className="h-4 w-4 text-gray-500" />
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="max-w-xs md:max-w-md lg:max-w-lg text-gray-700 group">
