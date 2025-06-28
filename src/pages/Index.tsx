@@ -318,15 +318,14 @@ That's such a **romantic choice!** Here are some ways to make it even more speci
   }, {} as Record<string, ChatSession[]>);
 
   const startNewChat = () => {
-    // Create a new chat session
-    const newSession = createNewChatSession();
-    setCurrentSessionId(newSession.id);
+    // Don't create a session until user sends first message
+    // Just reset the UI state
+    setCurrentSessionId(null);
     setMessages([]);
     setIsExpanded(false);
     setInputText('');
     
-    // Refresh chat history to show new session
-    setChatHistory(getAllChatSessions());
+    // No need to refresh chat history since no new session is created yet
   };
 
   const loadChat = (chatId: string) => {
