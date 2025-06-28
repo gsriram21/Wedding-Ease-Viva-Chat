@@ -1,5 +1,3 @@
-# Welcome to your Lovable project
-
 ## UI mockups - Landing page + Expanded chat view
 
 <img width="1502" alt="image" src="https://github.com/user-attachments/assets/fa662ab6-28b8-4fc0-8f11-81976bbebabf" />
