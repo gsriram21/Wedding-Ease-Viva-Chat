@@ -43,6 +43,9 @@ import {
   searchChatSessions
 } from '@/lib/chat-history';
 
+// Import the OpenAI service
+import { generateAIResponse, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
+
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -109,159 +112,73 @@ const Index = () => {
     setIsTyping(true);
     setIsExpanded(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponseText = generateAIResponse(inputText);
-      const aiMessage = addMessageToSession(sessionId!, {
-        text: aiResponseText,
-        sender: 'ai',
-        timestamp: new Date()
-      });
-      
-      setMessages(prev => [...prev, aiMessage]);
-      setIsTyping(false);
-      
-      // Refresh chat history to update last message and timestamp
-      setChatHistory(getAllChatSessions());
-    }, 1000 + Math.random() * 1000);
-  };
+    // Generate AI response using OpenAI
+    const generateResponse = async () => {
+      try {
+        let aiResponseText: string;
+        
+        if (isOpenAIConfigured()) {
+          // Use real OpenAI API
+          const conversationHistory = messages.map(msg => ({
+            role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
+            content: msg.text
+          }));
+          
+          const response = await generateAIResponse(inputText, conversationHistory);
+          
+          if (response.success && response.content) {
+            aiResponseText = response.content;
+          } else {
+            // Fallback to mock response if API fails
+            aiResponseText = `## ⚠️ AI Response Error
 
-  const generateAIResponse = (userInput: string): string => {
-    const input = userInput.toLowerCase();
+I encountered an issue generating a response: ${response.error}
+
+Let me provide a helpful fallback response instead:
+
+${getFallbackResponse(inputText)}`;
+          }
+        } else {
+          // Use fallback response when API key is not configured
+          aiResponseText = getFallbackResponse(inputText);
+        }
+        
+        const aiMessage = addMessageToSession(sessionId!, {
+          text: aiResponseText,
+          sender: 'ai',
+          timestamp: new Date()
+        });
+        
+        setMessages(prev => [...prev, aiMessage]);
+        setIsTyping(false);
+        
+        // Refresh chat history to update last message and timestamp
+        setChatHistory(getAllChatSessions());
+        
+      } catch (error) {
+        console.error('Error generating AI response:', error);
+        
+        // Fallback response for any unexpected errors
+        const fallbackText = `## ⚠️ Unexpected Error
+
+I'm having trouble connecting right now. Here's a helpful response based on your question:
+
+${getFallbackResponse(inputText)}`;
+        
+        const aiMessage = addMessageToSession(sessionId!, {
+          text: fallbackText,
+          sender: 'ai',
+          timestamp: new Date()
+        });
+        
+        setMessages(prev => [...prev, aiMessage]);
+        setIsTyping(false);
+        setChatHistory(getAllChatSessions());
+      }
+    };
     
-    // Generate contextual responses with beautiful markdown formatting
-    if (input.includes('budget') || input.includes('cost') || input.includes('price')) {
-      return `## 💰 Wedding Budget Planning
-
-**Great question!** Let me help you create a realistic wedding budget. Here's a breakdown of typical wedding expenses:
-
-### Major Categories
-- **Venue & Catering** (40-50% of budget)
-- **Photography & Videography** (10-15%)
-- **Flowers & Decorations** (8-10%)
-- **Attire & Beauty** (8-10%)
-- **Music & Entertainment** (8-10%)
-
-> **💡 Pro Tip:** Always add a 10-15% buffer for unexpected expenses!
-
-Would you like me to help you break down any specific category?`;
-    }
-    
-    if (input.includes('timeline') || input.includes('plan') || input.includes('schedule')) {
-      return `## 📅 Wedding Planning Timeline
-
-Here's your **step-by-step timeline** to ensure everything goes smoothly:
-
-### 12+ Months Before
-- [ ] Set your budget
-- [ ] Book your venue
-- [ ] Choose your wedding party
-
-### 6-8 Months Before
-- [ ] Send save-the-dates
-- [ ] Book major vendors (photographer, caterer, DJ)
-- [ ] Order wedding dress
-
-### 2-3 Months Before
-- [ ] Send invitations
-- [ ] Finalize menu and headcount
-- [ ] Schedule final fittings
-
-*Need help with any specific timeline item?*`;
-    }
-    
-    if (input.includes('style') || input.includes('theme') || input.includes('inspiration')) {
-      return `## ✨ Wedding Style Inspiration
-
-Let's discover your perfect wedding aesthetic! Here are some **trending styles** for 2024:
-
-### Popular Themes
-1. **Romantic Garden** 🌸
-   - Soft pastels, florals, natural textures
-   
-2. **Modern Minimalist** 🤍
-   - Clean lines, neutral tones, elegant simplicity
-   
-3. **Boho Chic** 🌿
-   - Earthy tones, macrame, wildflowers
-   
-4. **Classic Elegance** 💎
-   - Timeless colors, traditional elements
-
-> Which of these resonates with your vision? I can provide more specific ideas based on your preference!`;
-    }
-    
-    if (input.includes('venue') || input.includes('location')) {
-      return `## 🏰 Venue Selection Guide
-
-Choosing the **perfect venue** sets the tone for your entire celebration:
-
-### Venue Types to Consider
-| Type | Pros | Best For |
-|------|------|----------|
-| **Garden/Outdoor** | Natural beauty, photo opportunities | Spring/Summer weddings |
-| **Ballroom/Hotel** | All-inclusive, weather-proof | Formal celebrations |
-| **Barn/Rustic** | Charming, customizable | Casual, country themes |
-| **Beach/Waterfront** | Stunning views, romantic | Destination weddings |
-
-### Key Questions to Ask:
-- What's included in the package?
-- Are there vendor restrictions?
-- What's the backup plan for weather?
-
-*Tell me about your dream venue and I'll help you find similar options!*`;
-    }
-    
-    // Default responses with markdown formatting
-    const defaultResponses = [
-      `## 💕 Welcome to Your Wedding Journey!
-
-I'm **so excited** to help you plan your perfect day! Wedding planning can feel overwhelming, but we'll take it *step by step*.
-
-### How I Can Help:
-- **Budget planning** and cost breakdowns
-- **Timeline creation** and vendor coordination  
-- **Style inspiration** and theme development
-- **Vendor recommendations** and tips
-
-> What aspect of your wedding are you most excited about? 💍`,
-
-      `## 🌟 Beautiful Wedding Ideas
-
-That's such a **romantic choice!** Here are some ways to make it even more special:
-
-### Things to Consider:
-- How does this fit with your overall **wedding theme**?
-- What's your **venue style** and setting?
-- What **season** are you planning for?
-
-*I'd love to help you develop this idea further - tell me more about your vision!* ✨`,
-
-      `## 💐 Perfect Wedding Planning
-
-**I love helping with wedding details!** Let me suggest some beautiful options that would work perfectly for your special day.
-
-### Current Trends:
-- Sustainable and eco-friendly choices 🌱
-- Personalized touches and DIY elements 🎨  
-- Multi-cultural celebration blends 🌍
-- Intimate gatherings with meaningful details 💝
-
-> What specific area would you like to explore together?`,
-
-      `## 🎊 Your Dream Wedding Awaits
-
-**Great question!** Based on current wedding trends and timeless elegance, here are some ideas that might inspire you:
-
-### Key Principles:
-1. **Stay true to your style** - authenticity is beautiful
-2. **Focus on the experience** - create lasting memories
-3. **Don't forget the details** - they make all the difference
-
-*What's the most important element of your wedding day to you?* 💕`
-    ];
-    
-    return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
+    // Add a small delay for better UX
+    setTimeout(generateResponse, 500 + Math.random() * 1000);
   };
 
   const actionButtons = [
