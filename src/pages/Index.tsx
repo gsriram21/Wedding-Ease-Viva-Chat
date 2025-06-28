@@ -663,7 +663,7 @@ ${getFallbackResponse(inputText)}`;
               className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {message.sender === 'user' ? (
-                <div className="max-w-xs md:max-w-md lg:max-w-lg text-gray-800 group">
+                <div className="max-w-[85%] text-gray-800 group">
                   <div
                     className="px-4 py-3 rounded-2xl border bg-white/30 border-pink-100 shadow mb-2"
                     style={{backdropFilter: 'blur(6px)'}}
@@ -693,7 +693,7 @@ ${getFallbackResponse(inputText)}`;
                   </div>
                 </div>
               ) : (
-                <div className="max-w-xs md:max-w-md lg:max-w-lg text-gray-700 group">
+                <div className="max-w-[85%] text-gray-700 group">
                   <div className="mb-2">
                     <MarkdownRenderer content={message.text} />
                   </div>
