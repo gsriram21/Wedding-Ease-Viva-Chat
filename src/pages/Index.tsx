@@ -369,7 +369,14 @@ const Index = () => {
             if (smartResponse.images && smartResponse.images.length > 0) {
               accumulatedResponse += '\n\n**Generated Images:**\n';
               smartResponse.images.forEach((imageData, index) => {
-                accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
+                // Handle both URL and base64 formats
+                if (imageData.startsWith('http')) {
+                  // URL format (DALL-E 3)
+                  accumulatedResponse += `![Generated Wedding Image ${index + 1}](${imageData})\n\n`;
+                } else {
+                  // Base64 format (fallback)
+                  accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
+                }
               });
             }
             

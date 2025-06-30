@@ -1,0 +1,43 @@
+/**
+ * Test image data for development purposes
+ * Contains a small base64 encoded wedding-themed test image
+ */
+
+// Small 200x200 wedding-themed test image (rings icon)
+export const TEST_WEDDING_IMAGE_BASE64 = `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRkZGNUY1Ii8+CjxjaXJjbGUgY3g9IjcwIiBjeT0iMTAwIiByPSIzMCIgc3Ryb2tlPSIjRjU5RTBCIiBzdHJva2Utd2lkdGg9IjQiIGZpbGw9Im5vbmUiLz4KPGNpcmNsZSBjeD0iMTMwIiBjeT0iMTAwIiByPSIzMCIgc3Ryb2tlPSIjRjU5RTBCIiBzdHJva2Utd2lkdGg9IjQiIGZpbGw9Im5vbmUiLz4KPHN2ZyB4PSI2MCIgeT0iOTAiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSIjRjU5RTBCIj4KPHN0YXIgY3g9IjEyIiBjeT0iMTIiIHI9IjQiLz4KPC9zdmc+CjxzdmcgeD0iMTIwIiB5PSI5MCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9IiNGNTlFMEIiPgo8c3RhciBjeD0iMTIiIGN5PSIxMiIgcj0iNCIvPgo8L3N2Zz4KPHRleHQgeD0iMTAwIiB5PSIxNjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNGNTlFMEIiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9ImJvbGQiPldlZGRpbmcgUmluZ3M8L3RleHQ+Cjx0ZXh0IHg9IjEwMCIgeT0iMTgwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjOTk5IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTIiPlRlc3QgSW1hZ2U8L3RleHQ+Cjwvc3ZnPg==`;
+
+// Alternative test images for different wedding themes
+export const TEST_WEDDING_IMAGES = {
+  rings: TEST_WEDDING_IMAGE_BASE64,
+  
+  // Centerpiece test image
+  centerpiece: `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRkZGQUZBIi8+CjxyZWN0IHg9IjcwIiB5PSIxNDAiIHdpZHRoPSI2MCIgaGVpZ2h0PSIyMCIgZmlsbD0iI0Q5Rjk5RCIgcng9IjQiLz4KPGVsbGlwc2UgY3g9IjEwMCIgY3k9IjEwMCIgcng9IjQwIiByeT0iNDAiIGZpbGw9IiNGRUY5QzMiIHN0cm9rZT0iI0Q5RjQ5RCIgc3Ryb2tlLXdpZHRoPSIyIi8+CjxjaXJjbGUgY3g9IjgwIiBjeT0iODAiIHI9IjgiIGZpbGw9IiNGOTY4Njg6Ii8+CjxjaXJjbGUgY3g9IjEyMCIgY3k9IjgwIiByPSI4IiBmaWxsPSIjRjk2ODY4Ii8+CjxjaXJjbGUgY3g9IjEwMCIgY3k9IjEyMCIgcj0iOCIgZmlsbD0iI0Y5Njg2OCIvPgo8dGV4dCB4PSIxMDAiIHk9IjE4MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI0Q5RjQ5RCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmb250LXdlaWdodD0iYm9sZCI+Q2VudGVycGllY2U8L3RleHQ+Cjwvc3ZnPg==`,
+  
+  // Venue test image
+  venue: `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRkFGQUZBIi8+CjxyZWN0IHg9IjUwIiB5PSIxNjAiIHdpZHRoPSIxMDAiIGhlaWdodD0iMzAiIGZpbGw9IiNEQkJGODAiLz4KPHN2ZyB4PSI0MCIgeT0iNjAiIHdpZHRoPSIxMjAiIGhlaWdodD0iMTAwIj4KPHN2ZyB4PSIwIiB5PSIwIiB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEwMCI+CjxyZWN0IHg9IjIwIiB5PSI0MCIgd2lkdGg9IjgwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRkZGRkZGIiBzdHJva2U9IiNEQkJGODAiIHN0cm9rZS13aWR0aD0iMiIvPgo8cG9seWdvbiBwb2ludHM9IjEwLDQwIDYwLDEwIDExMCw0MCIgZmlsbD0iI0RCQkY4MCIvPgo8cmVjdCB4PSI0NSIgeT0iNjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIyMCIgZmlsbD0iI0RCQkY4MCIvPgo8cmVjdCB4PSI2NSIgeT0iNjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIyMCIgZmlsbD0iI0RCQkY4MCIvPgo8L3N2Zz4KPC9zdmc+Cjx0ZXh0IHg9IjEwMCIgeT0iMTg1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjREJCRjgwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZvbnQtd2VpZ2h0PSJib2xkIj5WZXN1ZSBUZXN0PC90ZXh0Pgo8L3N2Zz4=`
+};
+
+/**
+ * Get a test image based on the query content
+ */
+export const getTestImage = (query: string): string => {
+  const queryLower = query.toLowerCase();
+  
+  if (queryLower.includes('ring')) {
+    return TEST_WEDDING_IMAGES.rings;
+  } else if (queryLower.includes('centerpiece') || queryLower.includes('decoration') || queryLower.includes('table')) {
+    return TEST_WEDDING_IMAGES.centerpiece;
+  } else if (queryLower.includes('venue') || queryLower.includes('location')) {
+    return TEST_WEDDING_IMAGES.venue;
+  }
+  
+  // Default to rings
+  return TEST_WEDDING_IMAGES.rings;
+};
+
+/**
+ * Check if we're in development mode and should use test images
+ */
+export const shouldUseTestImages = (): boolean => {
+  return import.meta.env.DEV === true || import.meta.env.VITE_USE_TEST_IMAGES === 'true';
+}; 

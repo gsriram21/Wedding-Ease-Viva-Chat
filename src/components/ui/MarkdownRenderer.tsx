@@ -92,6 +92,22 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
           // Line breaks
           br: () => <br className="mb-1" />,
 
+          // Images
+          img: ({src, alt, ...props}) => (
+            <img 
+              src={src} 
+              alt={alt || 'Generated image'} 
+              className="max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200"
+              loading="lazy"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                console.error('Failed to load image:', src);
+              }}
+              {...props}
+            />
+          ),
+
           // Input checkboxes for task lists
           input: ({type, checked, ...props}) => 
             type === 'checkbox' ? (

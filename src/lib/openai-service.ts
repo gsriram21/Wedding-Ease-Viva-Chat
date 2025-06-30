@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { shouldUseTestImages, getTestImage } from './test-image-data';
 
 // Initialize OpenAI client
 const getOpenAIClient = () => {
@@ -107,11 +108,7 @@ export const generateAIResponse = async (
           search_context_size: 'medium'
         },
         { 
-          type: 'image_generation',
-          model: 'gpt-image-1',
-          quality: 'high',
-          size: 'auto',
-          output_format: 'png'
+          type: 'image_generation'
         }
       ],
       tool_choice: 'auto', // Let AI decide when to use tools
@@ -152,8 +149,16 @@ export const generateAIResponse = async (
           return '';
         }).join('');
       } else if (output.type === 'image_generation_call' && output.status === 'completed') {
-        if (output.result) {
-          images.push(output.result);
+        // Check if we should use test images in development
+        if (shouldUseTestImages()) {
+          const testImage = getTestImage(message);
+          images.push(testImage);
+        } else if ((output as any).image_url) {
+          // DALL-E 3 returns URLs instead of base64 data
+          images.push((output as any).image_url);
+        } else if ((output as any).result) {
+          // Fallback for other image generation models
+          images.push((output as any).result);
         }
       }
     }
@@ -191,6 +196,7 @@ export const generateAIResponse = async (
 /**
  * Generate streaming AI response using OpenAI's Responses API with all tools enabled
  * The AI will automatically decide when to use web search or image generation
+ * Handles streaming conflicts between web search and image generation properly
  */
 export const generateStreamingAIResponse = async (
   message: string,
@@ -225,6 +231,7 @@ export const generateStreamingAIResponse = async (
     }
     
     // Configure request with both tools enabled and streaming
+    // Based on official OpenAI Responses API documentation
     const requestParams: any = {
       model: 'gpt-4o',
       input: input,
@@ -234,12 +241,7 @@ export const generateStreamingAIResponse = async (
           search_context_size: 'medium'
         },
         { 
-          type: 'image_generation',
-          model: 'gpt-image-1',
-          quality: 'high',
-          size: 'auto',
-          output_format: 'png',
-          partial_images: 2 // Enable partial images for streaming
+          type: 'image_generation'
         }
       ],
       tool_choice: 'auto', // Let AI decide when to use tools
@@ -260,39 +262,62 @@ export const generateStreamingAIResponse = async (
       async start(controller) {
         try {
           let responseId: string | undefined;
+          let sources: Array<{ title: string; url: string }> = [];
+          let images: string[] = [];
           
           for await (const event of stream) {
             if (event.type === 'response.created' && event.response?.id) {
               responseId = event.response.id;
             }
             
+            // Handle text streaming
             if (event.type === 'response.output_text.delta') {
               controller.enqueue(event.delta);
             }
             
-            // Handle web search completion
+            // Handle web search events
+            if (event.type === 'response.web_search_call.started') {
+              controller.enqueue('\n\n🔍 *Searching the web for current information...*\n\n');
+            }
+            
             if (event.type === 'response.web_search_call.completed') {
-              controller.enqueue('\n\n**🔍 Web search completed**\n\n');
+              // Extract sources from web search results
+              if (event.web_search_call?.search_results) {
+                for (const result of event.web_search_call.search_results) {
+                  if (result.url && result.title) {
+                    sources.push({
+                      title: result.title,
+                      url: result.url
+                    });
+                  }
+                }
+              }
+              controller.enqueue('\n\n✅ *Web search completed*\n\n');
             }
             
-            // Handle partial images during streaming
-            if (event.type === 'response.image_generation_call.partial_image') {
-              const imageInfo = {
-                type: 'partial_image',
-                index: event.partial_image_index,
-                data: event.partial_image_b64
-              };
-              controller.enqueue(`\n\n[PARTIAL_IMAGE:${JSON.stringify(imageInfo)}]\n\n`);
+            // Handle image generation events
+            if (event.type === 'response.image_generation_call.started') {
+              controller.enqueue('\n\n🎨 *Generating image...*\n\n');
             }
             
-            // Handle completed images
             if (event.type === 'response.image_generation_call.completed') {
-              if (event.image_generation_call?.result) {
-                const imageInfo = {
-                  type: 'completed_image',
-                  data: event.image_generation_call.result
-                };
-                controller.enqueue(`\n\n[COMPLETED_IMAGE:${JSON.stringify(imageInfo)}]\n\n`);
+              if (event.image_generation_call?.image_url) {
+                // For DALL-E 3, we get URLs instead of base64
+                const imageUrl = event.image_generation_call.image_url;
+                images.push(imageUrl);
+                controller.enqueue(`\n\n![Generated Wedding Image](${imageUrl})\n\n`);
+              }
+              controller.enqueue('\n\n✅ *Image generation completed*\n\n');
+            }
+            
+            // Handle response completion
+            if (event.type === 'response.completed') {
+              // Add sources at the end if any were found
+              if (sources.length > 0) {
+                controller.enqueue('\n\n**Sources:**\n');
+                sources.forEach((source, index) => {
+                  controller.enqueue(`${index + 1}. [${source.title}](${source.url})\n`);
+                });
               }
             }
           }
@@ -322,6 +347,8 @@ export const generateStreamingAIResponse = async (
       errorMessage = 'Rate limit exceeded. Please try again in a moment.';
     } else if (error?.status === 500) {
       errorMessage = 'OpenAI service temporarily unavailable. Please try again.';
+    } else if (error?.message?.includes('partial_images')) {
+      errorMessage = 'Image generation streaming not supported. Using standard image generation instead.';
     } else if (error?.message) {
       errorMessage = `Streaming Error: ${error.message}`;
     }
