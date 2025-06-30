@@ -3,11 +3,19 @@
  * Handles session-based chat history with proper persistence
  */
 
+export interface MessageVersion {
+  id: string;
+  text: string;
+  timestamp: Date;
+}
+
 export interface Message {
   id: string;
   text: string;
   sender: 'user' | 'ai';
   timestamp: Date;
+  versions?: MessageVersion[]; // For AI messages that have been refreshed
+  currentVersionIndex?: number; // Index of currently displayed version
 }
 
 export interface ChatSession {
@@ -230,6 +238,40 @@ export function updateMessageInSession(sessionId: string, messageId: string, upd
 }
 
 /**
+ * Remove a message from a chat session
+ */
+export function removeMessageFromSession(sessionId: string, messageId: string): boolean {
+  const storage = loadFromStorage();
+  const session = storage.sessions.find(s => s.id === sessionId);
+  
+  if (!session) {
+    return false;
+  }
+  
+  const messageIndex = session.messages.findIndex(m => m.id === messageId);
+  if (messageIndex === -1) {
+    return false;
+  }
+  
+  // Remove the message
+  session.messages.splice(messageIndex, 1);
+  
+  // Update last message if this was the most recent message
+  if (session.messages.length > 0) {
+    const lastMessage = session.messages[session.messages.length - 1];
+    session.lastMessage = lastMessage.text;
+  } else {
+    session.lastMessage = '';
+  }
+  
+  // Update session timestamp
+  session.timestamp = new Date();
+  
+  saveToStorage(storage);
+  return true;
+}
+
+/**
  * Delete a chat session
  */
 export function deleteChatSession(sessionId: string): boolean {
@@ -308,6 +350,106 @@ export function getChatHistoryStats(): {
     totalMessages,
     oldestChat: sortedByDate[0].timestamp,
     newestChat: sortedByDate[sortedByDate.length - 1].timestamp
+  };
+}
+
+/**
+ * Add a new version to an AI message (for refresh functionality)
+ */
+export function addMessageVersion(sessionId: string, messageId: string, newText: string): boolean {
+  const storage = loadFromStorage();
+  const session = storage.sessions.find(s => s.id === sessionId);
+  
+  if (!session) {
+    return false;
+  }
+  
+  const message = session.messages.find(m => m.id === messageId);
+  if (!message || message.sender !== 'ai') {
+    return false;
+  }
+  
+  // Initialize versions array if it doesn't exist
+  if (!message.versions) {
+    // Create first version from current text
+    message.versions = [{
+      id: generateId(),
+      text: message.text,
+      timestamp: message.timestamp
+    }];
+    message.currentVersionIndex = 0;
+  }
+  
+  // Add new version
+  const newVersion: MessageVersion = {
+    id: generateId(),
+    text: newText,
+    timestamp: new Date()
+  };
+  
+  message.versions.push(newVersion);
+  message.currentVersionIndex = message.versions.length - 1;
+  message.text = newText; // Update main text to new version
+  message.timestamp = new Date(); // Update message timestamp
+  
+  // Update session timestamp and last message if this is the most recent message
+  const lastMessage = session.messages[session.messages.length - 1];
+  if (lastMessage && lastMessage.id === messageId) {
+    session.lastMessage = newText;
+  }
+  session.timestamp = new Date();
+  
+  saveToStorage(storage);
+  return true;
+}
+
+/**
+ * Switch to a different version of a message
+ */
+export function switchMessageVersion(sessionId: string, messageId: string, versionIndex: number): boolean {
+  const storage = loadFromStorage();
+  const session = storage.sessions.find(s => s.id === sessionId);
+  
+  if (!session) {
+    return false;
+  }
+  
+  const message = session.messages.find(m => m.id === messageId);
+  if (!message || !message.versions || versionIndex < 0 || versionIndex >= message.versions.length) {
+    return false;
+  }
+  
+  message.currentVersionIndex = versionIndex;
+  message.text = message.versions[versionIndex].text;
+  
+  // Update session last message if this is the most recent message
+  const lastMessage = session.messages[session.messages.length - 1];
+  if (lastMessage && lastMessage.id === messageId) {
+    session.lastMessage = message.text;
+  }
+  
+  saveToStorage(storage);
+  return true;
+}
+
+/**
+ * Get version info for a message
+ */
+export function getMessageVersionInfo(sessionId: string, messageId: string): { 
+  currentIndex: number; 
+  totalVersions: number; 
+  versions: MessageVersion[] 
+} | null {
+  const session = getChatSession(sessionId);
+  if (!session) return null;
+  
+  const message = session.messages.find(m => m.id === messageId);
+  if (!message || !message.versions) return null;
+  
+  return {
+    currentIndex: message.currentVersionIndex || 0,
+    totalVersions: message.versions.length,
+    versions: message.versions
   };
 }
 

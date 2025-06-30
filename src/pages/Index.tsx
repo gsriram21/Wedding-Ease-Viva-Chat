@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3, Check, Square } from 'lucide-react';
+import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, ChevronLeft, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3, Check, Square, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -41,6 +41,10 @@ import {
   addMessageToSession,
   getSessionMessages,
   updateMessageInSession,
+  removeMessageFromSession,
+  addMessageVersion,
+  switchMessageVersion,
+  getMessageVersionInfo,
   searchChatSessions
 } from '@/lib/chat-history';
 
@@ -705,11 +709,22 @@ ${getFallbackResponse()}`;
     // Update URL with selected chat
     updateURLWithSessionId(chatId);
     
-    // Load actual chat messages - this ensures we get ONLY the clean saved messages
+    // Load actual chat messages with version information
     const sessionMessages = getSessionMessages(chatId);
-    setMessages(sessionMessages);
+    const messagesWithVersions = sessionMessages.map(msg => {
+      if (msg.sender === 'ai' && msg.versions) {
+        return {
+          ...msg,
+          versions: msg.versions,
+          currentVersionIndex: msg.currentVersionIndex || 0
+        };
+      }
+      return msg;
+    });
     
-    if (sessionMessages.length > 0) {
+    setMessages(messagesWithVersions);
+    
+    if (messagesWithVersions.length > 0) {
       setIsExpanded(true);
     }
   };
@@ -801,6 +816,314 @@ ${getFallbackResponse()}`;
       setEditingMessage(null);
       setEditedText('');
     }
+  };
+
+  const refreshResponse = async (aiMessageId: string) => {
+    if (!currentSessionId || isStreaming) return;
+    
+    // Find the AI message and its corresponding user message
+    const aiMessageIndex = messages.findIndex(msg => msg.id === aiMessageId);
+    if (aiMessageIndex === -1) return;
+    
+    // Find the user message that preceded this AI response
+    let userMessage = null;
+    for (let i = aiMessageIndex - 1; i >= 0; i--) {
+      if (messages[i].sender === 'user') {
+        userMessage = messages[i];
+        break;
+      }
+    }
+    
+    if (!userMessage) return;
+    
+    // Build conversation history up to the user message (excluding the current AI response)
+    const conversationHistory = messages
+      .slice(0, aiMessageIndex)
+      .map(msg => ({
+        role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
+        content: msg.text
+      }));
+    
+    // Set streaming state and show loading
+    const abortController = new AbortController();
+    streamControllerRef.current = abortController;
+    setIsStreaming(true);
+    setStreamingMessageId(aiMessageId);
+    
+    // Temporarily show loading state
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === aiMessageId
+          ? { ...msg, text: '🔄 Generating new response...' }
+          : msg
+      )
+    );
+    
+    const generateResponse = async () => {
+      let accumulatedResponse = '';
+      let streamedContent = '';
+      
+      try {
+        if (isOpenAIConfigured()) {
+          // Check if streaming was aborted before starting
+          if (abortController.signal.aborted) {
+            return;
+          }
+          
+          // Step 1: Stream text + web search (no image generation to avoid conflicts)
+          const streamingResponse = await generateStreamingAIResponse(
+            userMessage.text,
+            conversationHistory
+          );
+          
+          if (streamingResponse.success && streamingResponse.stream && !abortController.signal.aborted) {
+            // Process the streaming response
+            const reader = streamingResponse.stream.getReader();
+            
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done || abortController.signal.aborted) {
+                  break;
+                }
+                
+                // value is already a string from our ReadableStream<string>
+                const chunk = value;
+                streamedContent += chunk;
+                accumulatedResponse = streamedContent;
+                
+                // Update the message with streaming content
+                setMessages(prev =>
+                  prev.map(msg =>
+                    msg.id === aiMessageId
+                      ? { ...msg, text: accumulatedResponse }
+                      : msg
+                  )
+                );
+              }
+            } finally {
+              reader.releaseLock();
+            }
+            
+            // Step 2: Check if images should be generated after streaming completes
+            if (!abortController.signal.aborted && shouldGenerateImages(userMessage.text, streamedContent)) {
+              try {
+                // Generate images separately (non-streaming)
+                const images = await generateImage(userMessage.text, conversationHistory);
+                
+                // Only add images section if we have real images (not test images in development)
+                if (images && images.length > 0 && !abortController.signal.aborted) {
+                  // Check if these are real images or just test images
+                  const hasRealImages = images.some(img => img.startsWith('http'));
+                  
+                  if (hasRealImages) {
+                    // Add the actual images
+                    accumulatedResponse += '\n\n**Generated Images:**\n';
+                    images.forEach((imageData, index) => {
+                      // Handle both URL and base64 formats
+                      if (imageData.startsWith('http')) {
+                        // URL format (DALL-E 3)
+                        accumulatedResponse += `![Generated Wedding Image ${index + 1}](${imageData})\n\n`;
+                      } else {
+                        // Base64 format (fallback)
+                        accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
+                      }
+                    });
+                    
+                    // Update the message with images
+                    setMessages(prev =>
+                      prev.map(msg =>
+                        msg.id === aiMessageId
+                          ? { ...msg, text: accumulatedResponse }
+                          : msg
+                      )
+                    );
+                  }
+                  // If they're just test images, don't show the "Generated Images" section
+                }
+              } catch (imageError) {
+                console.warn('Image generation failed:', imageError);
+                // Continue without images - no need to show any indicator
+              }
+            }
+            
+          } else if (!abortController.signal.aborted) {
+            // Handle streaming error - fallback to non-streaming
+            const fallbackResponse = await generateAIResponse(
+              userMessage.text,
+              conversationHistory
+            );
+            
+            if (fallbackResponse.success && fallbackResponse.content) {
+              accumulatedResponse = fallbackResponse.content;
+              
+              // Add sources if available
+              if (fallbackResponse.sources && fallbackResponse.sources.length > 0) {
+                accumulatedResponse += '\n\n**Sources:**\n';
+                fallbackResponse.sources.forEach((source, index) => {
+                  accumulatedResponse += `${index + 1}. [${source.title}](${source.url})\n`;
+                });
+              }
+              
+              // Add images if available (only show real images, not test images)
+              if (fallbackResponse.images && fallbackResponse.images.length > 0) {
+                const hasRealImages = fallbackResponse.images.some(img => img.startsWith('http'));
+                
+                if (hasRealImages) {
+                  accumulatedResponse += '\n\n**Generated Images:**\n';
+                  fallbackResponse.images.forEach((imageData, index) => {
+                    // Handle both URL and base64 formats
+                    if (imageData.startsWith('http')) {
+                      // URL format (DALL-E 3)
+                      accumulatedResponse += `![Generated Wedding Image ${index + 1}](${imageData})\n\n`;
+                    } else {
+                      // Base64 format (fallback)
+                      accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
+                    }
+                  });
+                }
+              }
+              
+              // Update the message in UI
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === aiMessageId
+                    ? { ...msg, text: accumulatedResponse }
+                    : msg
+                )
+              );
+            } else {
+              // Handle API error
+              accumulatedResponse = `## ⚠️ AI Response Error
+
+I encountered an issue generating a response: ${streamingResponse.error || fallbackResponse.error}
+
+Let me provide a helpful fallback response instead:
+
+${getFallbackResponse()}`;
+              
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === aiMessageId
+                    ? { ...msg, text: accumulatedResponse }
+                    : msg
+                )
+              );
+            }
+          }
+        } else {
+          // Use fallback response when API key is not configured
+          accumulatedResponse = getFallbackResponse();
+          
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === aiMessageId
+                ? { ...msg, text: accumulatedResponse }
+                : msg
+            )
+          );
+        }
+        
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          console.error('Error refreshing AI response:', error);
+          
+          // Fallback response for any unexpected errors
+          accumulatedResponse = `## ⚠️ Unexpected Error
+
+I'm having trouble connecting right now. Here's a helpful response based on your question:
+
+${getFallbackResponse()}`;
+          
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === aiMessageId
+                ? { ...msg, text: accumulatedResponse }
+                : msg
+            )
+          );
+        }
+      } finally {
+        // Save the new version if generation completed successfully
+        if (accumulatedResponse && currentSessionId && !abortController.signal.aborted) {
+          // Add as new version instead of replacing
+          addMessageVersion(currentSessionId, aiMessageId, accumulatedResponse);
+          
+          // Update local state to include version info
+          setMessages(prev => 
+            prev.map(msg => {
+              if (msg.id === aiMessageId) {
+                const versionInfo = getMessageVersionInfo(currentSessionId, aiMessageId);
+                return {
+                  ...msg,
+                  text: accumulatedResponse,
+                  versions: versionInfo?.versions,
+                  currentVersionIndex: versionInfo?.currentIndex
+                };
+              }
+              return msg;
+            })
+          );
+          
+          // Refresh chat history to update last message and timestamp
+          setChatHistory(getAllChatSessions());
+        }
+        
+        // Clean up streaming state
+        if (streamControllerRef.current === abortController) {
+          setIsStreaming(false);
+          setStreamingMessageId(null);
+          streamControllerRef.current = null;
+        }
+      }
+    };
+    
+    // Start generating response immediately
+    generateResponse();
+  };
+
+  const switchToVersion = (messageId: string, versionIndex: number) => {
+    if (!currentSessionId) return;
+    
+    const success = switchMessageVersion(currentSessionId, messageId, versionIndex);
+    if (success) {
+      // Update local state
+      setMessages(prev =>
+        prev.map(msg => {
+          if (msg.id === messageId) {
+            const versionInfo = getMessageVersionInfo(currentSessionId, messageId);
+            if (versionInfo) {
+              return {
+                ...msg,
+                text: versionInfo.versions[versionIndex].text,
+                currentVersionIndex: versionIndex
+              };
+            }
+          }
+          return msg;
+        })
+      );
+      
+      // Refresh chat history to update last message if this was the latest
+      setChatHistory(getAllChatSessions());
+    }
+  };
+
+  const getVersionNavigation = (message: Message) => {
+    if (!message.versions || message.versions.length <= 1) return null;
+    
+    const currentIndex = message.currentVersionIndex || 0;
+    const totalVersions = message.versions.length;
+    
+    return {
+      currentIndex,
+      totalVersions,
+      canGoPrevious: currentIndex > 0,
+      canGoNext: currentIndex < totalVersions - 1,
+      goToPrevious: () => switchToVersion(message.id, currentIndex - 1),
+      goToNext: () => switchToVersion(message.id, currentIndex + 1)
+    };
   };
 
   // Sidebar Toggle Button
@@ -1093,6 +1416,38 @@ ${getFallbackResponse()}`;
                 </div>
               ) : (
                 <div className="max-w-[85%] text-gray-700 group">
+                  {/* Version navigation - show at top left if multiple versions exist */}
+                  {(() => {
+                    const versionNav = getVersionNavigation(message);
+                    return versionNav ? (
+                      <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={versionNav.goToPrevious}
+                          disabled={!versionNav.canGoPrevious}
+                          className="h-6 w-6 p-0 hover:bg-gray-100/30 rounded"
+                          title="Previous version"
+                        >
+                          <ChevronLeft className="h-3 w-3" />
+                        </Button>
+                        <span className="font-mono text-[10px] bg-gray-100/50 px-2 py-1 rounded">
+                          {versionNav.currentIndex + 1} / {versionNav.totalVersions}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={versionNav.goToNext}
+                          disabled={!versionNav.canGoNext}
+                          className="h-6 w-6 p-0 hover:bg-gray-100/30 rounded"
+                          title="Next version"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : null;
+                  })()}
+                  
                   <div className="mb-2">
                     <MarkdownRenderer content={message.text} />
                   </div>
@@ -1128,6 +1483,16 @@ ${getFallbackResponse()}`;
                       title="Edit in text"
                     >
                       <Edit3 className="h-4 w-4 text-gray-500" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => refreshResponse(message.id)}
+                      className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                      title="Refresh response"
+                      disabled={isStreaming}
+                    >
+                      <RefreshCw className="h-4 w-4 text-gray-500" />
                     </Button>
                     <Button
                       variant="ghost"
