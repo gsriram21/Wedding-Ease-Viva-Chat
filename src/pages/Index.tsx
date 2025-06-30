@@ -363,9 +363,9 @@ const Index = () => {
             const aiMessage: Message = {
               id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
               text: '',
-              sender: 'ai',
-              timestamp: new Date()
-            };
+        sender: 'ai',
+        timestamp: new Date()
+      };
             
             placeholderMessageId = aiMessage.id;
             setMessages(prev => [...prev, aiMessage]);
@@ -1421,22 +1421,22 @@ ${getFallbackResponse()}`;
                   </div>
                   {/* Action buttons */}
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    {/* Version navigation - show inline with other buttons if multiple versions exist */}
+                                        {/* Version navigation - show inline with other buttons if multiple versions exist */}
                     {(() => {
                       const versionNav = getVersionNavigation(message);
                       return versionNav ? (
-                        <>
+                        <div className="flex items-center gap-0">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={versionNav.goToPrevious}
                             disabled={!versionNav.canGoPrevious}
-                            className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                            className="h-8 w-6 p-0 hover:bg-gray-100/30 rounded-lg"
                             title="Previous version"
                           >
                             <ChevronLeft className="h-4 w-4 text-gray-500" />
                           </Button>
-                          <span className="font-mono text-[10px] text-gray-500 px-0.5">
+                          <span className="font-mono text-sm text-gray-500 px-1">
                             {versionNav.currentIndex + 1}/{versionNav.totalVersions}
                           </span>
                           <Button
@@ -1444,12 +1444,12 @@ ${getFallbackResponse()}`;
                             size="sm"
                             onClick={versionNav.goToNext}
                             disabled={!versionNav.canGoNext}
-                            className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                            className="h-8 w-6 p-0 hover:bg-gray-100/30 rounded-lg"
                             title="Next version"
                           >
                             <ChevronRight className="h-4 w-4 text-gray-500" />
                           </Button>
-                        </>
+                        </div>
                       ) : null;
                     })()}
                     <Button
