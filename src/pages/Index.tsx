@@ -45,7 +45,7 @@ import {
 } from '@/lib/chat-history';
 
 // Import the OpenAI service
-import { generateAIResponse, generateStreamingAIResponse, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
+import { generateAIResponse, generateStreamingAIResponse, generateImage, shouldGenerateImages, getFallbackResponse, isOpenAIConfigured } from '@/lib/openai-service';
 
 // Sidebar Component - moved outside to prevent recreation and focus loss
 interface SidebarProps {
@@ -329,10 +329,11 @@ const Index = () => {
     const abortController = new AbortController();
     streamControllerRef.current = abortController;
 
-    // Generate AI response using OpenAI with streaming
+    // Generate AI response using OpenAI with streaming (text + web search only)
     const generateResponse = async () => {
       let placeholderMessageId: string | null = null;
       let accumulatedResponse = '';
+      let streamedContent = '';
       
       try {
         if (isOpenAIConfigured()) {
@@ -347,63 +348,177 @@ const Index = () => {
             return;
           }
           
-          // Use AI response that automatically chooses when to use web search and image generation
-          const smartResponse = await generateAIResponse(
+          // Step 1: Stream text + web search (no image generation to avoid conflicts)
+          const streamingResponse = await generateStreamingAIResponse(
             currentInput,
             conversationHistory
           );
           
-          if (smartResponse.success && smartResponse.content && !abortController.signal.aborted) {
-            // Smart response succeeded - display the content immediately
-            accumulatedResponse = smartResponse.content;
-            
-            // Add sources if available
-            if (smartResponse.sources && smartResponse.sources.length > 0) {
-              accumulatedResponse += '\n\n**Sources:**\n';
-              smartResponse.sources.forEach((source, index) => {
-                accumulatedResponse += `${index + 1}. [${source.title}](${source.url})\n`;
-              });
-            }
-            
-            // Add images if available
-            if (smartResponse.images && smartResponse.images.length > 0) {
-              accumulatedResponse += '\n\n**Generated Images:**\n';
-              smartResponse.images.forEach((imageData, index) => {
-                // Handle both URL and base64 formats
-                if (imageData.startsWith('http')) {
-                  // URL format (DALL-E 3)
-                  accumulatedResponse += `![Generated Wedding Image ${index + 1}](${imageData})\n\n`;
-                } else {
-                  // Base64 format (fallback)
-                  accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
-                }
-              });
-            }
-            
-            // Create and display the AI message
+          if (streamingResponse.success && streamingResponse.stream && !abortController.signal.aborted) {
+            // Create placeholder AI message for streaming
             const aiMessage: Message = {
               id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
-              text: accumulatedResponse,
-        sender: 'ai',
-        timestamp: new Date()
-      };
+              text: '',
+              sender: 'ai',
+              timestamp: new Date()
+            };
             
             placeholderMessageId = aiMessage.id;
             setMessages(prev => [...prev, aiMessage]);
+            setStreamingMessageId(aiMessage.id);
+            
+            // Process the streaming response
+            const reader = streamingResponse.stream.getReader();
+            
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done || abortController.signal.aborted) {
+                  break;
+                }
+                
+                // value is already a string from our ReadableStream<string>
+                const chunk = value;
+                streamedContent += chunk;
+                accumulatedResponse = streamedContent;
+                
+                // Update the message with streaming content
+                setMessages(prev =>
+                  prev.map(msg =>
+                    msg.id === placeholderMessageId
+                      ? { ...msg, text: accumulatedResponse }
+                      : msg
+                  )
+                );
+              }
+            } finally {
+              reader.releaseLock();
+            }
+            
+            // Step 2: Check if images should be generated after streaming completes
+            if (!abortController.signal.aborted && shouldGenerateImages(currentInput, streamedContent)) {
+              try {
+                // Generate images separately (non-streaming)
+                const images = await generateImage(currentInput, conversationHistory);
+                
+                // Only add images section if we have real images (not test images in development)
+                if (images && images.length > 0 && !abortController.signal.aborted) {
+                  // Check if these are real images or just test images
+                  const hasRealImages = images.some(img => img.startsWith('http'));
+                  
+                  if (hasRealImages) {
+                    // Add the actual images
+                    accumulatedResponse += '\n\n**Generated Images:**\n';
+                    images.forEach((imageData, index) => {
+                      // Handle both URL and base64 formats
+                      if (imageData.startsWith('http')) {
+                        // URL format (DALL-E 3)
+                        accumulatedResponse += `![Generated Wedding Image ${index + 1}](${imageData})\n\n`;
+                      } else {
+                        // Base64 format (fallback)
+                        accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
+                      }
+                    });
+                    
+                    // Update the message with images
+                    setMessages(prev =>
+                      prev.map(msg =>
+                        msg.id === placeholderMessageId
+                          ? { ...msg, text: accumulatedResponse }
+                          : msg
+                      )
+                    );
+                  }
+                  // If they're just test images, don't show the "Generated Images" section
+                }
+              } catch (imageError) {
+                console.warn('Image generation failed:', imageError);
+                // Continue without images - no need to show any indicator
+              }
+            }
             
           } else if (!abortController.signal.aborted) {
-            // Handle API error
-            accumulatedResponse = `## ⚠️ AI Response Error
+            // Handle streaming error - fallback to non-streaming
+            const fallbackResponse = await generateAIResponse(
+              currentInput,
+              conversationHistory
+            );
+            
+            if (fallbackResponse.success && fallbackResponse.content) {
+              accumulatedResponse = fallbackResponse.content;
+              
+              // Add sources if available
+              if (fallbackResponse.sources && fallbackResponse.sources.length > 0) {
+                accumulatedResponse += '\n\n**Sources:**\n';
+                fallbackResponse.sources.forEach((source, index) => {
+                  accumulatedResponse += `${index + 1}. [${source.title}](${source.url})\n`;
+                });
+              }
+              
+              // Add images if available (only show real images, not test images)
+              if (fallbackResponse.images && fallbackResponse.images.length > 0) {
+                const hasRealImages = fallbackResponse.images.some(img => img.startsWith('http'));
+                
+                if (hasRealImages) {
+                  accumulatedResponse += '\n\n**Generated Images:**\n';
+                  fallbackResponse.images.forEach((imageData, index) => {
+                    // Handle both URL and base64 formats
+                    if (imageData.startsWith('http')) {
+                      // URL format (DALL-E 3)
+                      accumulatedResponse += `![Generated Wedding Image ${index + 1}](${imageData})\n\n`;
+                    } else {
+                      // Base64 format (fallback)
+                      accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
+                    }
+                  });
+                }
+              }
+              
+              // Create and display the AI message
+              const aiMessage: Message = {
+                id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
+                text: accumulatedResponse,
+                sender: 'ai',
+                timestamp: new Date()
+              };
+              
+              placeholderMessageId = aiMessage.id;
+              setMessages(prev => [...prev, aiMessage]);
+            } else {
+              // Handle API error
+              accumulatedResponse = `## ⚠️ AI Response Error
 
-I encountered an issue generating a response: ${smartResponse.error}
+I encountered an issue generating a response: ${streamingResponse.error || fallbackResponse.error}
 
 Let me provide a helpful fallback response instead:
 
 ${getFallbackResponse()}`;
+              
+              const aiMessage: Message = {
+                id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
+                text: accumulatedResponse,
+                sender: 'ai',
+                timestamp: new Date()
+              };
+              
+              placeholderMessageId = aiMessage.id;
+              setMessages(prev => [...prev, aiMessage]);
+            }
           }
         } else {
           // Use fallback response when API key is not configured
           accumulatedResponse = getFallbackResponse();
+          
+          const aiMessage: Message = {
+            id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
+            text: accumulatedResponse,
+            sender: 'ai',
+            timestamp: new Date()
+          };
+          
+          placeholderMessageId = aiMessage.id;
+          setMessages(prev => [...prev, aiMessage]);
         }
         
       } catch (error) {

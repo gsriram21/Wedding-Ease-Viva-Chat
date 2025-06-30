@@ -194,9 +194,8 @@ export const generateAIResponse = async (
 };
 
 /**
- * Generate streaming AI response using OpenAI's Responses API with all tools enabled
- * The AI will automatically decide when to use web search or image generation
- * Handles streaming conflicts between web search and image generation properly
+ * Generate streaming AI response using OpenAI's Responses API with web search only
+ * This avoids the "partial images" streaming conflict by separating text+search from image generation
  */
 export const generateStreamingAIResponse = async (
   message: string,
@@ -230,8 +229,7 @@ export const generateStreamingAIResponse = async (
       ];
     }
     
-    // Configure request with both tools enabled and streaming
-    // Based on official OpenAI Responses API documentation
+    // Configure request with ONLY web search to avoid streaming conflicts
     const requestParams: any = {
       model: 'gpt-4o',
       input: input,
@@ -239,12 +237,10 @@ export const generateStreamingAIResponse = async (
         { 
           type: 'web_search_preview',
           search_context_size: 'medium'
-        },
-        { 
-          type: 'image_generation'
         }
+        // Image generation removed from streaming to prevent conflicts
       ],
-      tool_choice: 'auto', // Let AI decide when to use tools
+      tool_choice: 'auto', // Let AI decide when to use web search
       temperature: 0.7,
       max_output_tokens: 2000,
       store: true,
@@ -263,7 +259,6 @@ export const generateStreamingAIResponse = async (
         try {
           let responseId: string | undefined;
           let sources: Array<{ title: string; url: string }> = [];
-          let images: string[] = [];
           
           for await (const event of stream) {
             if (event.type === 'response.created' && event.response?.id) {
@@ -275,11 +270,7 @@ export const generateStreamingAIResponse = async (
               controller.enqueue(event.delta);
             }
             
-            // Handle web search events
-            if (event.type === 'response.web_search_call.started') {
-              controller.enqueue('\n\n🔍 *Searching the web for current information...*\n\n');
-            }
-            
+            // Handle web search events (silently - no status messages)
             if (event.type === 'response.web_search_call.completed') {
               // Extract sources from web search results
               if (event.web_search_call?.search_results) {
@@ -292,22 +283,6 @@ export const generateStreamingAIResponse = async (
                   }
                 }
               }
-              controller.enqueue('\n\n✅ *Web search completed*\n\n');
-            }
-            
-            // Handle image generation events
-            if (event.type === 'response.image_generation_call.started') {
-              controller.enqueue('\n\n🎨 *Generating image...*\n\n');
-            }
-            
-            if (event.type === 'response.image_generation_call.completed') {
-              if (event.image_generation_call?.image_url) {
-                // For DALL-E 3, we get URLs instead of base64
-                const imageUrl = event.image_generation_call.image_url;
-                images.push(imageUrl);
-                controller.enqueue(`\n\n![Generated Wedding Image](${imageUrl})\n\n`);
-              }
-              controller.enqueue('\n\n✅ *Image generation completed*\n\n');
             }
             
             // Handle response completion
@@ -347,8 +322,6 @@ export const generateStreamingAIResponse = async (
       errorMessage = 'Rate limit exceeded. Please try again in a moment.';
     } else if (error?.status === 500) {
       errorMessage = 'OpenAI service temporarily unavailable. Please try again.';
-    } else if (error?.message?.includes('partial_images')) {
-      errorMessage = 'Image generation streaming not supported. Using standard image generation instead.';
     } else if (error?.message) {
       errorMessage = `Streaming Error: ${error.message}`;
     }
@@ -358,6 +331,105 @@ export const generateStreamingAIResponse = async (
       error: errorMessage
     };
   }
+};
+
+/**
+ * Generate images after the text stream completes
+ * This is called separately to avoid streaming conflicts
+ */
+export const generateImage = async (
+  prompt: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+): Promise<string[]> => {
+  try {
+    const client = getOpenAIClient();
+    
+    // Check if we should use test images in development
+    if (shouldUseTestImages()) {
+      const testImage = getTestImage(prompt);
+      return [testImage];
+    }
+    
+    // Build input for image generation (using same format as other functions)
+    const input: any = conversationHistory.length > 0 
+      ? [
+          { role: 'system', content: WEDDING_ASSISTANT_PROMPT },
+          ...conversationHistory.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
+          { role: 'user', content: prompt }
+        ]
+      : [
+          { role: 'system', content: WEDDING_ASSISTANT_PROMPT },
+          { role: 'user', content: prompt }
+        ];
+
+    const response = await client.responses.create({
+      model: 'gpt-4o',
+      input: input,
+      tools: [{ type: 'image_generation' }],
+      tool_choice: 'auto',
+      temperature: 0.7,
+      max_output_tokens: 0, // No text back, just images
+      stream: false // Synchronous image generation
+    } as any);
+
+    // Collect URLs/base64 from response.output
+    const images: string[] = [];
+    for (const output of response.output) {
+      if (output.type === 'image_generation_call' && output.status === 'completed') {
+        if ((output as any).image_url) {
+          images.push((output as any).image_url);
+        } else if ((output as any).result) {
+          images.push((output as any).result);
+        }
+      }
+    }
+    
+    return images;
+    
+  } catch (error: any) {
+    console.error('Image generation error:', error);
+    
+    // Fallback to test image in case of error
+    if (shouldUseTestImages()) {
+      const testImage = getTestImage(prompt);
+      return [testImage];
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * Detect if the user's message explicitly requests visual content
+ * Made more conservative to avoid generating images for general questions
+ */
+export const shouldGenerateImages = (
+  userMessage: string, 
+  aiResponse?: string
+): boolean => {
+  // Only generate images for explicit visual requests
+  const explicitVisualRequests = [
+    'show me', 'what does', 'look like', 'picture of', 'image of',
+    'visualize', 'generate image', 'create image', 'design for me'
+  ];
+  
+  const messageText = userMessage.toLowerCase();
+  
+  // Check for explicit visual requests
+  const hasExplicitRequest = explicitVisualRequests.some(phrase => messageText.includes(phrase));
+  
+  // Also check if the user is asking for specific visual wedding elements
+  const visualWeddingElements = [
+    'centerpiece ideas', 'bouquet design', 'dress style', 'venue layout',
+    'cake design', 'table setting', 'decoration ideas', 'invitation design'
+  ];
+  
+  const hasVisualWeddingRequest = visualWeddingElements.some(element => messageText.includes(element));
+  
+  return hasExplicitRequest || hasVisualWeddingRequest;
 };
 
 /**
