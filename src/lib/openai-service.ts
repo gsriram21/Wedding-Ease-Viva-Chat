@@ -211,7 +211,7 @@ Always cite sources when using web search results and format responses beautiful
     const stream = new ReadableStream({
       start(controller) {
         const text = content.trim();
-        const chunkSize = 3; // Characters per chunk
+        const chunkSize = 1; // Characters per chunk - smaller for smoother streaming
         let index = 0;
 
         const sendChunk = () => {
@@ -225,7 +225,7 @@ Always cite sources when using web search results and format responses beautiful
             }
             
             controller.enqueue(chunk);
-            setTimeout(sendChunk, 20); // Delay between chunks for streaming effect
+            setTimeout(sendChunk, 10); // Faster delay for smoother streaming effect
           } else {
             controller.close();
           }

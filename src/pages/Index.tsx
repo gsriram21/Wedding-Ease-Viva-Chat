@@ -294,27 +294,107 @@ const Index = () => {
             content: msg.text
           }));
           
-          // Use non-streaming version to avoid message persistence issues
-          const response = await generateAIResponse(inputText, conversationHistory);
+          // Create a placeholder AI message for streaming
+          const placeholderAIMessage: Message = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            text: '',
+            sender: 'ai',
+            timestamp: new Date()
+          };
           
-          if (response.success && response.content) {
-            // Add the complete AI response to session
-            const aiMessage = addMessageToSession(sessionId!, {
-              text: response.content,
-              sender: 'ai',
-              timestamp: new Date()
-            });
+          // Add placeholder to messages immediately
+          setMessages(prev => [...prev, placeholderAIMessage]);
+          setIsTyping(false);
+          
+          // Start streaming response
+          const streamingResponse = await generateStreamingAIResponse(
+            inputText, 
+            conversationHistory,
+            (chunk: string) => {
+              // Update the streaming message with each chunk
+              setMessages(prev => 
+                prev.map(msg => 
+                  msg.id === placeholderAIMessage.id
+                    ? { ...msg, text: msg.text + chunk }
+                    : msg
+                )
+              );
+            }
+          );
+          
+          if (streamingResponse.success && streamingResponse.stream) {
+            // Read the stream and update the message
+            const reader = streamingResponse.stream.getReader();
+            let fullResponse = '';
             
-            setMessages(prev => [...prev, aiMessage]);
-            setIsTyping(false);
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                fullResponse += value;
+                
+                // Update the message with the accumulated response
+                setMessages(prev => 
+                  prev.map(msg => 
+                    msg.id === placeholderAIMessage.id
+                      ? { ...msg, text: fullResponse }
+                      : msg
+                  )
+                );
+              }
+              
+              // Once streaming is complete, save the final message to session
+              if (fullResponse) {
+                const finalAIMessage = addMessageToSession(sessionId!, {
+                  text: fullResponse,
+                  sender: 'ai',
+                  timestamp: new Date()
+                });
+                
+                // Update the message with the final ID from storage
+                setMessages(prev => 
+                  prev.map(msg => 
+                    msg.id === placeholderAIMessage.id
+                      ? finalAIMessage
+                      : msg
+                  )
+                );
+                
+                // Refresh chat history to update last message and timestamp
+                setChatHistory(getAllChatSessions());
+              }
+              
+            } catch (streamError) {
+              console.error('Stream reading error:', streamError);
+              
+              // If streaming fails, fall back to regular response
+              const response = await generateAIResponse(inputText, conversationHistory);
+              
+              if (response.success && response.content) {
+                const aiMessage = addMessageToSession(sessionId!, {
+                  text: response.content,
+                  sender: 'ai',
+                  timestamp: new Date()
+                });
+                
+                setMessages(prev => 
+                  prev.map(msg => 
+                    msg.id === placeholderAIMessage.id
+                      ? aiMessage
+                      : msg
+                  )
+                );
+                
+                setChatHistory(getAllChatSessions());
+              }
+            }
             
-            // Refresh chat history to update last message and timestamp
-            setChatHistory(getAllChatSessions());
           } else {
-            // Handle API error
+            // Handle streaming API error
             const errorText = `## ⚠️ AI Response Error
 
-I encountered an issue generating a response: ${response.error}
+I encountered an issue generating a response: ${streamingResponse.error}
 
 Let me provide a helpful fallback response instead:
 
@@ -326,8 +406,14 @@ ${getFallbackResponse()}`;
               timestamp: new Date()
             });
             
-            setMessages(prev => [...prev, aiMessage]);
-            setIsTyping(false);
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === placeholderAIMessage.id
+                  ? aiMessage
+                  : msg
+              )
+            );
+            
             setChatHistory(getAllChatSessions());
           }
         } else {
