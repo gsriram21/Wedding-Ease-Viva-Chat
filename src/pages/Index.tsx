@@ -193,6 +193,7 @@ const Index = () => {
   // Auto-scroll functionality
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastStreamingContentRef = useRef<string>('');
 
   // Auto-scroll to bottom function
   const scrollToBottom = useCallback((smooth: boolean = true) => {
@@ -214,12 +215,33 @@ const Index = () => {
     return isNear;
   }, []);
 
-  // Auto-scroll during streaming - scroll as new content appears (only if user is near bottom)
+  // Auto-scroll during streaming - scroll as new content appears
   useEffect(() => {
-    if (isStreaming && streamingMessageId && isNearBottom()) {
-      scrollToBottom(true);
+    if (isStreaming && streamingMessageId) {
+      // During streaming, scroll to bottom frequently to follow the content
+      const intervalId = setInterval(() => {
+        scrollToBottom(true);
+      }, 100); // Check every 100ms during streaming
+      
+      return () => clearInterval(intervalId);
     }
-  }, [messages, isStreaming, streamingMessageId, scrollToBottom, isNearBottom]);
+  }, [isStreaming, streamingMessageId, scrollToBottom]);
+
+  // Additional auto-scroll for streaming content changes
+  useEffect(() => {
+    if (isStreaming && streamingMessageId) {
+      // Find the streaming message and check if content changed
+      const streamingMessage = messages.find(msg => msg.id === streamingMessageId);
+      if (streamingMessage && streamingMessage.text !== lastStreamingContentRef.current) {
+        lastStreamingContentRef.current = streamingMessage.text;
+        // Scroll to bottom whenever streaming message content changes
+        scrollToBottom(true);
+      }
+    } else {
+      // Reset when not streaming
+      lastStreamingContentRef.current = '';
+    }
+  }, [messages, isStreaming, streamingMessageId, scrollToBottom]);
 
   // Auto-scroll when switching chats - scroll to bottom immediately
   useEffect(() => {
