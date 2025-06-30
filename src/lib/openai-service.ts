@@ -18,307 +18,343 @@ export interface OpenAIResponse {
   success: boolean;
   content?: string;
   error?: string;
+  responseId?: string;
+  sources?: Array<{ title: string; url: string }>;
+  images?: string[];
 }
 
 export interface StreamingResponse {
   success: boolean;
   stream?: ReadableStream<string>;
   error?: string;
+  responseId?: string;
 }
 
 /**
- * Generate AI response using OpenAI's Responses API with real web search capabilities
+ * System prompt for Viva wedding planning assistant
+ */
+const WEDDING_ASSISTANT_PROMPT = `You are Viva, a helpful and knowledgeable wedding planning assistant. Your role is to provide comprehensive, accurate, and helpful information about all aspects of wedding planning.
+
+**Your expertise includes:**
+- Budget planning and cost estimation
+- Vendor selection and recommendations
+- Timeline creation and planning
+- Decoration ideas and themes
+- Wedding etiquette and traditions
+- Venue selection and considerations
+- Guest management and invitations
+- Photography and videography guidance
+- Catering and menu planning
+- Dress and attire recommendations
+
+**Response style:**
+- Use beautiful markdown formatting with headers, lists, and emphasis
+- Include relevant emojis to make responses engaging and warm
+- Provide specific, actionable advice
+- Structure information in easy-to-read sections
+- Be encouraging and supportive
+- Keep responses comprehensive but not overwhelming
+
+**Available tools:**
+- **Web search**: Use when you need current pricing, trends, vendor information, local recommendations, or any real-time data
+- **Image generation**: Use when users ask for visual inspiration, decoration ideas, themes, layout concepts, or any visual content
+
+**Remember:** Always prioritize helpfulness and accuracy. Use the appropriate tools when they would enhance your response. Provide practical advice that couples can actually implement in their wedding planning journey.`;
+
+/**
+ * Generate AI response using OpenAI's Responses API with all tools enabled
+ * The AI will automatically decide when to use web search or image generation
  */
 export const generateAIResponse = async (
   message: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  previousResponseId?: string
 ): Promise<OpenAIResponse> => {
   try {
     const client = getOpenAIClient();
     
-    // Build the input messages array
-    const messages = [
-      {
-        role: 'system' as const,
-        content: `You are a helpful and knowledgeable wedding planning assistant. Your role is to provide comprehensive, accurate, and up-to-date information about all aspects of wedding planning.
-
-**Your capabilities include:**
-- **Real-time web search**: You can search the internet for current wedding trends, vendor pricing, venue availability, and market information
-- **Comprehensive wedding expertise**: Budget planning, vendor selection, timeline creation, decoration ideas, and etiquette guidance
-- **Current market insights**: Latest pricing, trending styles, seasonal considerations, and vendor recommendations
-- **Personalized recommendations**: Tailored advice based on budget, style preferences, guest count, and location
-
-**When to use web search:**
-- For current pricing information (venues, vendors, services)
-- For trending wedding styles and themes
-- For vendor recommendations in specific locations
-- For seasonal availability and considerations
-- For recent changes in wedding industry practices
-- For up-to-date legal requirements or restrictions
-
-**Response format:**
-- Use beautiful markdown formatting with headers, lists, and emphasis
-- Include relevant emojis to make responses engaging
-- Provide specific, actionable advice
-- When using web search, cite your sources clearly
-- Structure information in easy-to-read sections
-
-**Remember:** Always prioritize accuracy and helpfulness. Use web search when you need current information to provide the best possible advice.`
-      },
-      ...conversationHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      })),
-      {
-        role: 'user' as const,
-        content: message
-      }
-    ];
-
-    // Create response using Responses API with web search
-    const response = await client.responses.create({
+    // Build input based on conversation history
+    let input: any;
+    
+    if (previousResponseId) {
+      // Continue conversation with previous context
+      input = [{ role: 'user', content: message }];
+    } else if (conversationHistory.length > 0) {
+      // Build full conversation manually
+      input = [
+        { role: 'system', content: WEDDING_ASSISTANT_PROMPT },
+        ...conversationHistory.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        { role: 'user', content: message }
+      ];
+    } else {
+      // First message
+      input = [
+        { role: 'system', content: WEDDING_ASSISTANT_PROMPT },
+        { role: 'user', content: message }
+      ];
+    }
+    
+    // Configure request with both tools enabled - let AI decide when to use them
+    const requestParams: any = {
       model: 'gpt-4o',
-      input: messages,
-      tools: [{ 
-        type: 'web_search_preview',
-        search_context_size: 'high' // Get detailed search results
-      }]
-    });
-
-    // Extract the text content from the response
+      input: input,
+      tools: [
+        { 
+          type: 'web_search_preview',
+          search_context_size: 'medium'
+        },
+        { 
+          type: 'image_generation',
+          model: 'gpt-image-1',
+          quality: 'high',
+          size: 'auto',
+          output_format: 'png'
+        }
+      ],
+      tool_choice: 'auto', // Let AI decide when to use tools
+      temperature: 0.7,
+      max_output_tokens: 2000,
+      store: true,
+      stream: false
+    };
+    
+    if (previousResponseId) {
+      requestParams.previous_response_id = previousResponseId;
+    }
+    
+    const response = await client.responses.create(requestParams);
+    
+    // Extract content and metadata
     let content = '';
-    if (response.output && Array.isArray(response.output)) {
-      for (const output of response.output) {
-        if (output.type === 'message' && output.content) {
-          for (const contentItem of output.content) {
-            if (contentItem.type === 'output_text') {
-              content += contentItem.text;
+    const sources: Array<{ title: string; url: string }> = [];
+    const images: string[] = [];
+    
+    for (const output of response.output) {
+      if (output.type === 'message') {
+        content += output.content.map((c: any) => {
+          if (c.type === 'output_text') {
+            // Extract source citations
+            if (c.annotations) {
+              for (const annotation of c.annotations) {
+                if (annotation.type === 'url_citation') {
+                  sources.push({
+                    title: annotation.title || 'Source',
+                    url: annotation.url
+                  });
+                }
+              }
             }
+            return c.text;
           }
+          return '';
+        }).join('');
+      } else if (output.type === 'image_generation_call' && output.status === 'completed') {
+        if (output.result) {
+          images.push(output.result);
         }
       }
     }
-
-    if (!content) {
-      throw new Error('No content received from OpenAI Responses API');
-    }
-
+    
     return {
       success: true,
-      content: content.trim()
+      content: content.trim(),
+      responseId: response.id,
+      sources: sources.length > 0 ? sources : undefined,
+      images: images.length > 0 ? images : undefined
     };
-
-  } catch (error: any) {
-    console.error('OpenAI API Error:', error);
     
-    // Handle specific error types
+  } catch (error: any) {
+    console.error('OpenAI API error:', error);
+    
+    let errorMessage = 'Failed to generate AI response. Please try again.';
+    
     if (error?.status === 401) {
-      return {
-        success: false,
-        error: 'Invalid API key. Please check your OpenAI API key configuration.'
-      };
+      errorMessage = 'Invalid API key. Please check your OpenAI API key configuration.';
     } else if (error?.status === 429) {
-      return {
-        success: false,
-        error: 'Rate limit exceeded. Please try again in a moment.'
-      };
+      errorMessage = 'Rate limit exceeded. Please try again in a moment.';
     } else if (error?.status === 500) {
-      return {
-        success: false,
-        error: 'OpenAI service temporarily unavailable. Please try again.'
-      };
+      errorMessage = 'OpenAI service temporarily unavailable. Please try again.';
+    } else if (error?.message) {
+      errorMessage = `API Error: ${error.message}`;
     }
     
     return {
       success: false,
-      error: error?.message || 'Failed to generate response. Please try again.'
+      error: errorMessage
     };
   }
 };
 
 /**
- * Generate streaming AI response using OpenAI's Responses API
+ * Generate streaming AI response using OpenAI's Responses API with all tools enabled
+ * The AI will automatically decide when to use web search or image generation
  */
 export const generateStreamingAIResponse = async (
   message: string,
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-  onChunk?: (chunk: string) => void
+  previousResponseId?: string
 ): Promise<StreamingResponse> => {
   try {
     const client = getOpenAIClient();
     
-    // Build the input messages array
-    const messages = [
-      {
-        role: 'system' as const,
-        content: `You are a helpful and knowledgeable wedding planning assistant with real-time web search capabilities. Provide comprehensive, accurate, and up-to-date information about all aspects of wedding planning.
-
-**Your capabilities:**
-- Real-time web search for current trends, pricing, and vendor information
-- Comprehensive wedding planning expertise
-- Beautiful markdown formatting with emojis
-- Personalized recommendations based on user needs
-
-**Use web search for:**
-- Current pricing and vendor information
-- Trending styles and themes
-- Location-specific recommendations
-- Seasonal considerations
-- Recent industry changes
-
-Always cite sources when using web search results and format responses beautifully with markdown.`
-      },
-      ...conversationHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      })),
-      {
-        role: 'user' as const,
-        content: message
-      }
-    ];
-
-    // Note: The Responses API doesn't support streaming in the same way as Chat Completions
-    // For now, we'll use the non-streaming version and simulate streaming
-    const response = await client.responses.create({
+    // Build input based on conversation history
+    let input: any;
+    
+    if (previousResponseId) {
+      // Continue conversation with previous context
+      input = [{ role: 'user', content: message }];
+    } else if (conversationHistory.length > 0) {
+      // Build full conversation manually
+      input = [
+        { role: 'system', content: WEDDING_ASSISTANT_PROMPT },
+        ...conversationHistory.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        { role: 'user', content: message }
+      ];
+    } else {
+      // First message
+      input = [
+        { role: 'system', content: WEDDING_ASSISTANT_PROMPT },
+        { role: 'user', content: message }
+      ];
+    }
+    
+    // Configure request with both tools enabled and streaming
+    const requestParams: any = {
       model: 'gpt-4o',
-      input: messages,
-      tools: [{ 
-        type: 'web_search_preview',
-        search_context_size: 'high'
-      }]
-    });
-
-    // Extract content
-    let content = '';
-    if (response.output && Array.isArray(response.output)) {
-      for (const output of response.output) {
-        if (output.type === 'message' && output.content) {
-          for (const contentItem of output.content) {
-            if (contentItem.type === 'output_text') {
-              content += contentItem.text;
+      input: input,
+      tools: [
+        { 
+          type: 'web_search_preview',
+          search_context_size: 'medium'
+        },
+        { 
+          type: 'image_generation',
+          model: 'gpt-image-1',
+          quality: 'high',
+          size: 'auto',
+          output_format: 'png',
+          partial_images: 2 // Enable partial images for streaming
+        }
+      ],
+      tool_choice: 'auto', // Let AI decide when to use tools
+      temperature: 0.7,
+      max_output_tokens: 2000,
+      store: true,
+      stream: true
+    };
+    
+    if (previousResponseId) {
+      requestParams.previous_response_id = previousResponseId;
+    }
+    
+    const stream = await client.responses.create(requestParams) as any;
+    
+    // Create a readable stream that handles the OpenAI Responses API stream
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        try {
+          let responseId: string | undefined;
+          
+          for await (const event of stream) {
+            if (event.type === 'response.created' && event.response?.id) {
+              responseId = event.response.id;
+            }
+            
+            if (event.type === 'response.output_text.delta') {
+              controller.enqueue(event.delta);
+            }
+            
+            // Handle web search completion
+            if (event.type === 'response.web_search_call.completed') {
+              controller.enqueue('\n\n**🔍 Web search completed**\n\n');
+            }
+            
+            // Handle partial images during streaming
+            if (event.type === 'response.image_generation_call.partial_image') {
+              const imageInfo = {
+                type: 'partial_image',
+                index: event.partial_image_index,
+                data: event.partial_image_b64
+              };
+              controller.enqueue(`\n\n[PARTIAL_IMAGE:${JSON.stringify(imageInfo)}]\n\n`);
+            }
+            
+            // Handle completed images
+            if (event.type === 'response.image_generation_call.completed') {
+              if (event.image_generation_call?.result) {
+                const imageInfo = {
+                  type: 'completed_image',
+                  data: event.image_generation_call.result
+                };
+                controller.enqueue(`\n\n[COMPLETED_IMAGE:${JSON.stringify(imageInfo)}]\n\n`);
+              }
             }
           }
+          
+          controller.close();
+        } catch (error) {
+          console.error('Streaming error:', error);
+          controller.error(error);
         }
       }
-    }
-
-    if (!content) {
-      throw new Error('No content received from OpenAI Responses API');
-    }
-
-    // Create a readable stream that simulates streaming by chunking the response
-    const stream = new ReadableStream({
-      start(controller) {
-        const text = content.trim();
-        const chunkSize = 1; // Characters per chunk - smaller for smoother streaming
-        let index = 0;
-
-        const sendChunk = () => {
-          if (index < text.length) {
-            const chunk = text.slice(index, index + chunkSize);
-            index += chunkSize;
-            
-            // Call onChunk callback if provided
-            if (onChunk) {
-              onChunk(chunk);
-            }
-            
-            controller.enqueue(chunk);
-            setTimeout(sendChunk, 10); // Faster delay for smoother streaming effect
-          } else {
-            controller.close();
-          }
-        };
-
-        sendChunk();
-      }
     });
-
+    
     return {
       success: true,
-      stream
+      stream: readableStream,
+      responseId: undefined // Will be set once streaming starts
     };
-
+    
   } catch (error: any) {
-    console.error('OpenAI Streaming API Error:', error);
+    console.error('OpenAI streaming error:', error);
+    
+    let errorMessage = 'Failed to start streaming response. Please try again.';
+    
+    if (error?.status === 401) {
+      errorMessage = 'Invalid API key. Please check your OpenAI API key configuration.';
+    } else if (error?.status === 429) {
+      errorMessage = 'Rate limit exceeded. Please try again in a moment.';
+    } else if (error?.status === 500) {
+      errorMessage = 'OpenAI service temporarily unavailable. Please try again.';
+    } else if (error?.message) {
+      errorMessage = `Streaming Error: ${error.message}`;
+    }
     
     return {
       success: false,
-      error: error?.message || 'Failed to generate streaming response. Please try again.'
+      error: errorMessage
     };
   }
 };
 
 /**
- * Fallback response when OpenAI is not available
+ * Legacy function - now just calls the main generateAIResponse
+ * @deprecated Use generateAIResponse instead
+ */
+export const generateSmartAIResponse = generateAIResponse;
+
+/**
+ * Get fallback response for when AI is not available
  */
 export const getFallbackResponse = (): string => {
-  const fallbackResponses = [
-    `# 🌟 Wedding Planning Assistant
-
-I'm here to help you plan your perfect wedding! While I'm currently unable to access real-time information, I can still assist you with:
-
-## 💍 **Wedding Planning Services**
-- **Budget Planning** - Create realistic budgets for your special day
-- **Venue Selection** - Find the perfect location for your ceremony and reception  
-- **Vendor Coordination** - Connect with photographers, caterers, florists, and more
-- **Timeline Creation** - Develop a comprehensive planning timeline
-- **Style & Theme Ideas** - Explore different wedding aesthetics
-
-## 📋 **Popular Wedding Topics**
-- Average wedding costs and budget breakdowns
-- Seasonal wedding considerations
-- Guest list management
-- Wedding etiquette and traditions
-- Decoration and styling ideas
-
-*Please note: For the most current pricing and vendor information, I recommend checking with local vendors directly or visiting recent wedding planning websites.*
-
-How can I help you start planning your dream wedding? ✨`,
-
-    `# 💒 Welcome to Your Wedding Planning Journey!
-
-I'm your dedicated wedding planning assistant, ready to help make your special day perfect! 
-
-## 🎯 **What I Can Help You With:**
-
-### 📊 **Budget & Planning**
-- Create detailed wedding budgets
-- Timeline development and milestone tracking
-- Guest list management strategies
-- Cost-saving tips and alternatives
-
-### 🏛️ **Venues & Vendors**
-- Venue selection criteria and tips
-- Questions to ask potential vendors
-- Contract negotiation advice
-- Backup planning strategies
-
-### 🎨 **Style & Design**
-- Wedding theme exploration
-- Color palette selection
-- Decoration ideas and DIY projects
-- Seasonal styling considerations
-
-### 📅 **Timeline Management**
-- 12-month planning timeline
-- Month-by-month task breakdowns
-- Last-minute preparation checklists
-- Day-of coordination tips
-
-*For current pricing and real-time vendor availability, I recommend checking local wedding websites and contacting vendors directly.*
-
-What aspect of your wedding planning would you like to explore first? 🌸`
+  const responses = [
+    "I'd be happy to help with your wedding planning! While I can't access my full capabilities right now, I can still provide some general guidance. What specific aspect of your wedding would you like to discuss?",
+    "Let's plan your perfect wedding! Even though my AI features aren't fully available at the moment, I can offer some basic wedding planning advice. What would you like to know about?",
+    "Wedding planning can feel overwhelming, but you've got this! While I'm experiencing some technical difficulties, I'm still here to help with general wedding advice. What's on your mind?"
   ];
   
-  return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+  return responses[Math.floor(Math.random() * responses.length)];
 };
 
 /**
- * Check if OpenAI API is properly configured
+ * Check if OpenAI is properly configured
  */
 export const isOpenAIConfigured = (): boolean => {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  return !!(apiKey && apiKey !== 'your_openai_api_key_here');
+  return !!import.meta.env.VITE_OPENAI_API_KEY;
 }; 

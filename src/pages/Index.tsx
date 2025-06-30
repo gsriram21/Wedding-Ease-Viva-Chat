@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3, Check } from 'lucide-react';
+import { Send, Sparkles, Heart, MessageSquare, Calendar, Lightbulb, User, LogIn, UserPlus, Smartphone, Mail, Phone, PanelLeft, Plus, Search, ChevronDown, ChevronRight, Bookmark, Image, CheckSquare, ShoppingCart, DollarSign, Clock, Copy, Download, ThumbsUp, Edit3, Check, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -166,7 +166,6 @@ const Sidebar = React.memo<SidebarProps>(({
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -181,6 +180,11 @@ const Index = () => {
   // Replace mock chat history with real chat history
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Streaming control state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const streamControllerRef = useRef<AbortController | null>(null);
 
   // URL state management functions
   const getSessionIdFromURL = useCallback((): string | null => {
@@ -198,64 +202,99 @@ const Index = () => {
     window.history.replaceState({}, '', url.toString());
   }, []);
 
-  const loadChatFromURL = useCallback(() => {
-    const urlSessionId = getSessionIdFromURL();
+  // Stop streaming function
+  const stopStreaming = useCallback(() => {
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
+      streamControllerRef.current = null;
+    }
     
-    if (urlSessionId) {
-      // Try to load the session from URL
-      const session = getChatSession(urlSessionId);
-      if (session) {
-        setCurrentChatSession(urlSessionId);
-        setCurrentSessionId(urlSessionId);
-        setMessages(session.messages);
-        if (session.messages.length > 0) {
-          setIsExpanded(true);
+    // Save any partially streamed message to session storage
+    if (streamingMessageId && currentSessionId) {
+      const currentMessage = messages.find(msg => msg.id === streamingMessageId);
+      if (currentMessage && currentMessage.text.trim()) {
+        // Only save if this is a temporary message (not already saved)
+        // Temporary IDs: timestamp + random (no dash), Permanent IDs: timestamp-random (with dash)
+        const isTemporary = !streamingMessageId.includes('-');
+        
+        if (isTemporary) {
+          // Save the partial message to session storage
+          const savedMessage = addMessageToSession(currentSessionId, {
+            text: currentMessage.text,
+            sender: 'ai',
+      timestamp: new Date()
+          });
+          
+          // Replace the temporary message with the saved one in UI
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === streamingMessageId
+                ? savedMessage
+                : msg
+            )
+          );
+          
+          // Refresh chat history
+          setChatHistory(getAllChatSessions());
         }
-        return true;
-      } else {
-        // Session doesn't exist, clear URL and start fresh
-        updateURLWithSessionId(null);
-        setCurrentSessionId(null);
-        setMessages([]);
-        setIsExpanded(false);
-        return false;
       }
     }
     
-    // No chat ID in URL - start completely fresh
-    // Don't load any existing session, just clear everything
-    setCurrentSessionId(null);
-    setMessages([]);
-    setIsExpanded(false);
-    
-    return false;
-  }, [getSessionIdFromURL, updateURLWithSessionId]);
+    setIsStreaming(false);
+    setStreamingMessageId(null);
+  }, [streamingMessageId, currentSessionId, messages]);
 
-  // Load chat history on component mount
+  // Load chat history and handle URL changes
   useEffect(() => {
     const loadChatHistory = () => {
-      const sessions = getAllChatSessions();
-      setChatHistory(sessions);
+      const allSessions = getAllChatSessions();
+      setChatHistory(allSessions);
       
-      // Load chat based on URL or current session
-      loadChatFromURL();
+      // Check for session ID in URL
+      const urlSessionId = getSessionIdFromURL();
+      if (urlSessionId) {
+        const session = getChatSession(urlSessionId);
+        if (session) {
+          // Clear any existing streaming state when loading a different chat
+          setIsStreaming(false);
+          setStreamingMessageId(null);
+          if (streamControllerRef.current) {
+            streamControllerRef.current.abort();
+            streamControllerRef.current = null;
+          }
+          
+          setCurrentSessionId(urlSessionId);
+          setCurrentChatSession(urlSessionId);
+          const sessionMessages = getSessionMessages(urlSessionId);
+          setMessages(sessionMessages);
+          setIsExpanded(sessionMessages.length > 0);
+        }
+      } else {
+        // Check for current session from storage
+        const currentSession = getCurrentChatSession();
+        if (currentSession) {
+          setCurrentSessionId(currentSession.id);
+          updateURLWithSessionId(currentSession.id);
+          const sessionMessages = getSessionMessages(currentSession.id);
+          setMessages(sessionMessages);
+          setIsExpanded(sessionMessages.length > 0);
+        }
+      }
     };
-    
-    loadChatHistory();
-  }, [loadChatFromURL]);
 
-  // Handle browser back/forward navigation
-  useEffect(() => {
+    loadChatHistory();
+
     const handlePopState = () => {
-      loadChatFromURL();
+      loadChatHistory();
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [loadChatFromURL]);
+  }, [getSessionIdFromURL, updateURLWithSessionId]);
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+  const handleSendMessage = async (messageText?: string) => {
+    const textToSend = messageText || inputText;
+    if (!textToSend.trim() || isStreaming) return;
 
     // Create new session if none exists
     let sessionId = currentSessionId;
@@ -271,9 +310,12 @@ const Index = () => {
       setChatHistory(getAllChatSessions());
     }
 
+    // Store the current input text before clearing it
+    const currentInput = textToSend;
+    
     // Add user message to session
     const userMessage = addMessageToSession(sessionId, {
-      text: inputText,
+      text: currentInput,
       sender: 'user',
       timestamp: new Date()
     });
@@ -281,180 +323,137 @@ const Index = () => {
     // Update local messages state
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
-    setIsTyping(true);
     setIsExpanded(true);
+
+    // Create abort controller for this streaming session
+    const abortController = new AbortController();
+    streamControllerRef.current = abortController;
 
     // Generate AI response using OpenAI with streaming
     const generateResponse = async () => {
+      let placeholderMessageId: string | null = null;
+      let accumulatedResponse = '';
+      
       try {
         if (isOpenAIConfigured()) {
-          // Use real OpenAI API with streaming
-          const conversationHistory = messages.map(msg => ({
+          // Build conversation history including the current user message
+          const conversationHistory = [...messages, userMessage].map(msg => ({
             role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
             content: msg.text
           }));
           
-          // Create a placeholder AI message for streaming
-          const placeholderAIMessage: Message = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            text: '',
-            sender: 'ai',
-            timestamp: new Date()
-          };
+          // Check if streaming was aborted before starting
+          if (abortController.signal.aborted) {
+            return;
+          }
           
-          // Add placeholder to messages immediately
-          setMessages(prev => [...prev, placeholderAIMessage]);
-          setIsTyping(false);
-          
-          // Start streaming response
-          const streamingResponse = await generateStreamingAIResponse(
-            inputText, 
-            conversationHistory,
-            (chunk: string) => {
-              // Update the streaming message with each chunk
-              setMessages(prev => 
-                prev.map(msg => 
-                  msg.id === placeholderAIMessage.id
-                    ? { ...msg, text: msg.text + chunk }
-                    : msg
-                )
-              );
-            }
+          // Use AI response that automatically chooses when to use web search and image generation
+          const smartResponse = await generateAIResponse(
+            currentInput,
+            conversationHistory
           );
           
-          if (streamingResponse.success && streamingResponse.stream) {
-            // Read the stream and update the message
-            const reader = streamingResponse.stream.getReader();
-            let fullResponse = '';
+          if (smartResponse.success && smartResponse.content && !abortController.signal.aborted) {
+            // Smart response succeeded - display the content immediately
+            accumulatedResponse = smartResponse.content;
             
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                fullResponse += value;
-                
-                // Update the message with the accumulated response
-                setMessages(prev => 
-                  prev.map(msg => 
-                    msg.id === placeholderAIMessage.id
-                      ? { ...msg, text: fullResponse }
-                      : msg
-                  )
-                );
-              }
-              
-              // Once streaming is complete, save the final message to session
-              if (fullResponse) {
-                const finalAIMessage = addMessageToSession(sessionId!, {
-                  text: fullResponse,
-                  sender: 'ai',
-                  timestamp: new Date()
-                });
-                
-                // Update the message with the final ID from storage
-                setMessages(prev => 
-                  prev.map(msg => 
-                    msg.id === placeholderAIMessage.id
-                      ? finalAIMessage
-                      : msg
-                  )
-                );
-                
-                // Refresh chat history to update last message and timestamp
-                setChatHistory(getAllChatSessions());
-              }
-              
-            } catch (streamError) {
-              console.error('Stream reading error:', streamError);
-              
-              // If streaming fails, fall back to regular response
-              const response = await generateAIResponse(inputText, conversationHistory);
-              
-              if (response.success && response.content) {
-                const aiMessage = addMessageToSession(sessionId!, {
-                  text: response.content,
-                  sender: 'ai',
-                  timestamp: new Date()
-                });
-                
-                setMessages(prev => 
-                  prev.map(msg => 
-                    msg.id === placeholderAIMessage.id
-                      ? aiMessage
-                      : msg
-                  )
-                );
-                
-                setChatHistory(getAllChatSessions());
-              }
+            // Add sources if available
+            if (smartResponse.sources && smartResponse.sources.length > 0) {
+              accumulatedResponse += '\n\n**Sources:**\n';
+              smartResponse.sources.forEach((source, index) => {
+                accumulatedResponse += `${index + 1}. [${source.title}](${source.url})\n`;
+              });
             }
             
-          } else {
-            // Handle streaming API error
-            const errorText = `## ⚠️ AI Response Error
+            // Add images if available
+            if (smartResponse.images && smartResponse.images.length > 0) {
+              accumulatedResponse += '\n\n**Generated Images:**\n';
+              smartResponse.images.forEach((imageData, index) => {
+                accumulatedResponse += `![Generated Wedding Image ${index + 1}](data:image/png;base64,${imageData})\n\n`;
+              });
+            }
+            
+            // Create and display the AI message
+            const aiMessage: Message = {
+              id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
+              text: accumulatedResponse,
+        sender: 'ai',
+        timestamp: new Date()
+      };
+            
+            placeholderMessageId = aiMessage.id;
+            setMessages(prev => [...prev, aiMessage]);
+            
+          } else if (!abortController.signal.aborted) {
+            // Handle API error
+            accumulatedResponse = `## ⚠️ AI Response Error
 
-I encountered an issue generating a response: ${streamingResponse.error}
+I encountered an issue generating a response: ${smartResponse.error}
 
 Let me provide a helpful fallback response instead:
 
 ${getFallbackResponse()}`;
-            
-            const aiMessage = addMessageToSession(sessionId!, {
-              text: errorText,
-              sender: 'ai',
-              timestamp: new Date()
-            });
-            
-            setMessages(prev => 
-              prev.map(msg => 
-                msg.id === placeholderAIMessage.id
-                  ? aiMessage
-                  : msg
-              )
-            );
-            
-            setChatHistory(getAllChatSessions());
           }
         } else {
           // Use fallback response when API key is not configured
-          const aiResponseText = getFallbackResponse();
-          
-          const aiMessage = addMessageToSession(sessionId!, {
-            text: aiResponseText,
-            sender: 'ai',
-            timestamp: new Date()
-          });
-          
-          setMessages(prev => [...prev, aiMessage]);
-          setIsTyping(false);
-          setChatHistory(getAllChatSessions());
+          accumulatedResponse = getFallbackResponse();
         }
         
       } catch (error) {
-        console.error('Error generating AI response:', error);
-        
-        // Fallback response for any unexpected errors
-        const fallbackText = `## ⚠️ Unexpected Error
+        if (!abortController.signal.aborted) {
+          console.error('Error generating AI response:', error);
+          
+          // Fallback response for any unexpected errors
+          accumulatedResponse = `## ⚠️ Unexpected Error
 
 I'm having trouble connecting right now. Here's a helpful response based on your question:
 
 ${getFallbackResponse()}`;
+        }
+      } finally {
+        // Only save the message if streaming completed successfully (not aborted)
+        if (accumulatedResponse && sessionId && !abortController.signal.aborted) {
+          // Check if message was already saved by stopStreaming
+          const currentMessage = placeholderMessageId ? messages.find(msg => msg.id === placeholderMessageId) : null;
+          const isAlreadySaved = currentMessage && currentMessage.id.includes('-'); // Permanent ID has dash
+          
+          if (!isAlreadySaved) {
+            const finalAIMessage = addMessageToSession(sessionId, {
+              text: accumulatedResponse,
+              sender: 'ai',
+              timestamp: new Date()
+            });
+            
+            // Update the message with the final ID from storage
+            if (placeholderMessageId) {
+              setMessages(prev => 
+                prev.map(msg => 
+                  msg.id === placeholderMessageId
+                    ? finalAIMessage
+                    : msg
+                )
+              );
+            } else {
+              // If no placeholder was created (immediate error), add the message
+              setMessages(prev => [...prev, finalAIMessage]);
+            }
+            
+            // Refresh chat history to update last message and timestamp
+            setChatHistory(getAllChatSessions());
+          }
+        }
         
-        const aiMessage = addMessageToSession(sessionId!, {
-          text: fallbackText,
-          sender: 'ai',
-          timestamp: new Date()
-        });
-        
-        setMessages(prev => [...prev, aiMessage]);
-        setIsTyping(false);
-        setChatHistory(getAllChatSessions());
+        // Clean up streaming state
+        if (streamControllerRef.current === abortController) {
+          setIsStreaming(false);
+          setStreamingMessageId(null);
+          streamControllerRef.current = null;
+        }
       }
     };
     
-    // Add a small delay for better UX
-    setTimeout(generateResponse, 500 + Math.random() * 1000);
+    // Start generating response immediately
+    generateResponse();
   };
 
   const actionButtons = [
@@ -465,7 +464,23 @@ ${getFallbackResponse()}`;
   ];
 
   const handleQuickAction = (action: string) => {
+    if (!action.trim() || isStreaming) return;
+    
+    // Just set the input text, don't auto-execute
     setInputText(action);
+    
+    // Focus the input field for better UX
+    setTimeout(() => {
+      const inputElement = document.querySelector('input[placeholder*="Ask me anything"]') as HTMLInputElement;
+      if (inputElement) {
+        inputElement.focus();
+      }
+    }, 100);
+  };
+
+  // Wrapper for button clicks that don't pass parameters
+  const handleSendClick = () => {
+    handleSendMessage();
   };
 
   // Utility functions
@@ -526,12 +541,12 @@ ${getFallbackResponse()}`;
   // Group chats by date with memoization
   const groupedChats = useMemo(() => {
     return filteredChatHistory.reduce((acc, chat) => {
-      const dateKey = formatDateGroup(chat.timestamp);
-      if (!acc[dateKey]) {
-        acc[dateKey] = [];
-      }
-      acc[dateKey].push(chat);
-      return acc;
+    const dateKey = formatDateGroup(chat.timestamp);
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
+    }
+    acc[dateKey].push(chat);
+    return acc;
     }, {} as Record<string, ChatSession[]>);
   }, [filteredChatHistory]);
 
@@ -553,6 +568,14 @@ ${getFallbackResponse()}`;
   };
 
   const loadChat = (chatId: string) => {
+    // Clear any existing streaming state when switching chats
+    setIsStreaming(false);
+    setStreamingMessageId(null);
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
+      streamControllerRef.current = null;
+    }
+    
     // Set as current session
     setCurrentChatSession(chatId);
     setCurrentSessionId(chatId);
@@ -560,7 +583,7 @@ ${getFallbackResponse()}`;
     // Update URL with selected chat
     updateURLWithSessionId(chatId);
     
-    // Load actual chat messages
+    // Load actual chat messages - this ensures we get ONLY the clean saved messages
     const sessionMessages = getSessionMessages(chatId);
     setMessages(sessionMessages);
     
@@ -574,18 +597,14 @@ ${getFallbackResponse()}`;
 
   // Message action functions
   const copyMessage = async (text: string, messageId?: string) => {
-    // Show immediate feedback - optimistic UI update
-    if (messageId) {
-      setCopiedMessageIds(prev => new Set([...prev, messageId]));
-    }
-    
     try {
       const { copyToClipboard } = await import('@/lib/clipboard');
       const result = await copyToClipboard(text);
       
       if (result.success) {
-        // Copy succeeded, keep the checkmark for 1.1 seconds
+        // Copy succeeded, show checkmark for 1.1 seconds
         if (messageId) {
+          setCopiedMessageIds(prev => new Set([...prev, messageId]));
           setTimeout(() => {
             setCopiedMessageIds(prev => {
               const newSet = new Set(prev);
@@ -596,52 +615,26 @@ ${getFallbackResponse()}`;
         }
       } else {
         console.error('Failed to copy text:', result.error);
-        // Copy failed, try fallback and remove checkmark immediately if it fails
+        // Copy failed, try fallback
         try {
           const retryResult = await copyToClipboard(text, { fallbackMethod: true });
-          if (retryResult.success) {
-            // Retry succeeded, keep checkmark for 1.1 seconds
-            if (messageId) {
-              setTimeout(() => {
-                setCopiedMessageIds(prev => {
-                  const newSet = new Set(prev);
-                  newSet.delete(messageId);
-                  return newSet;
-                });
-              }, 1100);
-            }
-          } else {
-            // Both attempts failed, remove checkmark immediately
-            if (messageId) {
+          if (retryResult.success && messageId) {
+            // Retry succeeded, show checkmark for 1.1 seconds
+            setCopiedMessageIds(prev => new Set([...prev, messageId]));
+            setTimeout(() => {
               setCopiedMessageIds(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(messageId);
                 return newSet;
               });
-            }
+            }, 1100);
           }
         } catch (retryErr) {
           console.error('Retry copy failed:', retryErr);
-          // Remove checkmark on error
-          if (messageId) {
-            setCopiedMessageIds(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(messageId);
-              return newSet;
-            });
-          }
         }
       }
     } catch (err) {
       console.error('Failed to copy text: ', err);
-      // Remove checkmark on error
-      if (messageId) {
-        setCopiedMessageIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(messageId);
-          return newSet;
-        });
-      }
     }
   };
 
@@ -679,11 +672,11 @@ ${getFallbackResponse()}`;
       
       if (success) {
         // Update local state
-        setMessages(prev => prev.map(msg => 
-          msg.id === editingMessage.id 
-            ? { ...msg, text: editedText }
-            : msg
-        ));
+      setMessages(prev => prev.map(msg => 
+        msg.id === editingMessage.id 
+          ? { ...msg, text: editedText }
+          : msg
+      ));
         
         // Refresh chat history if last message was updated
         setChatHistory(getAllChatSessions());
@@ -950,12 +943,12 @@ ${getFallbackResponse()}`;
             >
               {message.sender === 'user' ? (
                 <div className="max-w-[85%] text-gray-800 group">
-                  <div
+                <div
                     className="px-4 py-3 rounded-2xl border bg-white/30 border-pink-100 shadow mb-2"
-                    style={{backdropFilter: 'blur(6px)'}}
-                  >
-                    <p className="text-sm leading-relaxed">{message.text}</p>
-                  </div>
+                  style={{backdropFilter: 'blur(6px)'}}
+                >
+                  <p className="text-sm leading-relaxed">{message.text}</p>
+                </div>
                   {/* Action buttons for user messages */}
                   <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                     <Button
@@ -968,7 +961,7 @@ ${getFallbackResponse()}`;
                       {copiedMessageIds.has(message.id) ? (
                         <Check className="h-4 w-4 text-gray-500" />
                       ) : (
-                        <Copy className="h-4 w-4 text-gray-500" />
+                      <Copy className="h-4 w-4 text-gray-500" />
                       )}
                     </Button>
                     <Button
@@ -1005,20 +998,11 @@ ${getFallbackResponse()}`;
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => downloadMessage(message.text, message.id)}
-                      className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
-                      title="Download"
-                    >
-                      <Download className="h-4 w-4 text-gray-500" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
                       onClick={() => toggleLike(message.id)}
                       className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
                       title="Like"
                     >
-                      <ThumbsUp className={`h-4 w-4 ${likedMessages.has(message.id) ? 'text-blue-500 fill-current' : 'text-gray-500'}`} />
+                      <ThumbsUp className={`h-4 w-4 ${likedMessages.has(message.id) ? 'text-gray-500 fill-current' : 'text-gray-500'}`} />
                     </Button>
                     <Button
                       variant="ghost"
@@ -1029,24 +1013,20 @@ ${getFallbackResponse()}`;
                     >
                       <Edit3 className="h-4 w-4 text-gray-500" />
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => downloadMessage(message.text, message.id)}
+                      className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                      title="Download"
+                    >
+                      <Download className="h-4 w-4 text-gray-500" />
+                    </Button>
                   </div>
                 </div>
               )}
             </div>
           ))}
-
-          {/* Typing indicator */}
-          {isTyping && (
-            <div className="flex justify-start">
-              <div className="bg-white/80 text-gray-700 rounded-2xl rounded-bl-sm px-4 py-3 border border-rose-100" style={{backdropFilter: 'blur(6px)'}}>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-pink-200 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-pink-200 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-2 h-2 bg-pink-200 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Input area */}
@@ -1057,20 +1037,30 @@ ${getFallbackResponse()}`;
                 <Input
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onKeyPress={(e) => e.key === 'Enter' && !isStreaming && handleSendClick()}
                   placeholder="Type your message..."
                   className="pr-12 bg-white/70 border-primary/20 rounded-2xl focus:border-primary focus:ring-primary/20 text-base py-3"
+                  disabled={isStreaming}
                 />
                 <Sparkles className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-primary/40" />
               </div>
               
+              {isStreaming ? (
               <Button
-                onClick={handleSendMessage}
-                disabled={!inputText.trim() || isTyping}
+                  onClick={stopStreaming}
+                  className="bg-primary hover:bg-primary/90 text-white rounded-2xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSendClick}
+                  disabled={!inputText.trim()}
                 className="bg-primary hover:bg-primary/90 text-white rounded-2xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-1"
               >
                 <Send className="w-4 h-4" />
               </Button>
+              )}
             </div>
           </div>
         </div>
@@ -1139,20 +1129,30 @@ ${getFallbackResponse()}`;
                 <Input
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onKeyPress={(e) => e.key === 'Enter' && !isStreaming && handleSendClick()}
                   placeholder="Ask me anything about wedding planning..."
                   className="pr-12 bg-white/70 border-primary/20 rounded-2xl focus:border-primary focus:ring-primary/20 text-base py-3"
+                  disabled={isStreaming}
                 />
                 <Sparkles className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-primary/40" />
               </div>
               
+              {isStreaming ? (
               <Button
-                onClick={handleSendMessage}
+                  onClick={stopStreaming}
+                  className="bg-primary hover:bg-primary/90 text-white rounded-2xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSendClick}
                 disabled={!inputText.trim()}
                 className="bg-primary hover:bg-primary/90 text-white rounded-2xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-1"
               >
                 <Send className="w-4 h-4" />
               </Button>
+              )}
             </div>
           </div>
         </div>
