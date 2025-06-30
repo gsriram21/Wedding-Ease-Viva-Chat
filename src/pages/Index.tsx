@@ -193,9 +193,35 @@ const Index = () => {
   // Auto-scroll functionality
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const lastStreamingContentRef = useRef<string>('');
 
-  // Auto-scroll to bottom function
+  // ChatGPT-style scroll: Focus on current conversation
+  const scrollToCurrentConversation = useCallback((smooth: boolean = true) => {
+    if (messages.length === 0) return;
+    
+    // Find the last user message to focus on the current conversation
+    let lastUserMessageIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender === 'user') {
+        lastUserMessageIndex = i;
+        break;
+      }
+    }
+    
+    if (lastUserMessageIndex === -1) return;
+    
+    // Get the message element by its ID
+    const lastUserMessage = messages[lastUserMessageIndex];
+    const messageElement = document.querySelector(`[data-message-id="${lastUserMessage.id}"]`);
+    
+    if (messageElement) {
+      messageElement.scrollIntoView({
+        behavior: smooth ? 'smooth' : 'auto',
+        block: 'center' // Center the user message in viewport - ChatGPT style
+      });
+    }
+  }, [messages]);
+
+  // Fallback scroll to bottom function (for chat switching)
   const scrollToBottom = useCallback((smooth: boolean = true) => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ 
@@ -205,43 +231,12 @@ const Index = () => {
     }
   }, []);
 
-  // Check if user is near bottom of chat
-  const isNearBottom = useCallback(() => {
-    if (!messagesContainerRef.current) return true;
-    
-    const container = messagesContainerRef.current;
-    const threshold = 100; // pixels from bottom
-    const isNear = container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
-    return isNear;
-  }, []);
-
-  // Auto-scroll during streaming - scroll as new content appears
+  // Auto-scroll during streaming - focus on current conversation
   useEffect(() => {
     if (isStreaming && streamingMessageId) {
-      // During streaming, scroll to bottom frequently to follow the content
-      const intervalId = setInterval(() => {
-        scrollToBottom(true);
-      }, 100); // Check every 100ms during streaming
-      
-      return () => clearInterval(intervalId);
+      scrollToCurrentConversation(true);
     }
-  }, [isStreaming, streamingMessageId, scrollToBottom]);
-
-  // Additional auto-scroll for streaming content changes
-  useEffect(() => {
-    if (isStreaming && streamingMessageId) {
-      // Find the streaming message and check if content changed
-      const streamingMessage = messages.find(msg => msg.id === streamingMessageId);
-      if (streamingMessage && streamingMessage.text !== lastStreamingContentRef.current) {
-        lastStreamingContentRef.current = streamingMessage.text;
-        // Scroll to bottom whenever streaming message content changes
-        scrollToBottom(true);
-      }
-    } else {
-      // Reset when not streaming
-      lastStreamingContentRef.current = '';
-    }
-  }, [messages, isStreaming, streamingMessageId, scrollToBottom]);
+  }, [messages, isStreaming, streamingMessageId, scrollToCurrentConversation]);
 
   // Auto-scroll when switching chats - scroll to bottom immediately
   useEffect(() => {
@@ -254,16 +249,20 @@ const Index = () => {
     }
   }, [currentSessionId, scrollToBottom]);
 
-  // Auto-scroll when new messages are added (user messages)
+  // Auto-scroll when new messages are added - ChatGPT style focusing
   useEffect(() => {
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
-      // If it's a user message or we're not currently streaming, scroll to bottom
-      if (lastMessage.sender === 'user' || !isStreaming) {
-        scrollToBottom(true);
+      // When user sends a message, focus on that conversation
+      if (lastMessage.sender === 'user') {
+        // Small delay to ensure DOM is updated
+        const timeoutId = setTimeout(() => {
+          scrollToCurrentConversation(true);
+        }, 100);
+        return () => clearTimeout(timeoutId);
       }
     }
-  }, [messages.length, scrollToBottom, isStreaming]);
+  }, [messages.length, scrollToCurrentConversation]);
 
   // URL state management functions
   const getSessionIdFromURL = useCallback((): string | null => {
@@ -1456,6 +1455,7 @@ ${getFallbackResponse()}`;
           {messages.map((message) => (
             <div
               key={message.id}
+              data-message-id={message.id}
               className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {message.sender === 'user' ? (
@@ -1504,22 +1504,22 @@ ${getFallbackResponse()}`;
                       const versionNav = getVersionNavigation(message);
                       return versionNav ? (
                         <div className="flex items-center gap-0">
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                             onClick={versionNav.goToPrevious}
                             disabled={!versionNav.canGoPrevious}
                             className="h-8 w-6 p-0 hover:bg-gray-100/30 rounded-lg"
                             title="Previous version"
                           >
                             <ChevronLeft className="h-4 w-4 text-gray-500" />
-                          </Button>
+                    </Button>
                           <span className="font-mono text-sm text-gray-500 px-1">
                             {versionNav.currentIndex + 1}/{versionNav.totalVersions}
                           </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                             onClick={versionNav.goToNext}
                             disabled={!versionNav.canGoNext}
                             className="h-8 w-6 p-0 hover:bg-gray-100/30 rounded-lg"
