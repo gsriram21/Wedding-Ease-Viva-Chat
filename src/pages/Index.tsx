@@ -597,12 +597,22 @@ ${getFallbackResponse()}`;
 
   // Message action functions
   const copyMessage = async (text: string, messageId?: string) => {
+    // Prevent multiple simultaneous copy operations for the same message
+    if (messageId && copiedMessageIds.has(messageId)) {
+      return;
+    }
+
     try {
       const { copyToClipboard } = await import('@/lib/clipboard');
-      const result = await copyToClipboard(text);
+      
+      // Attempt to copy with built-in fallback handling
+      const result = await copyToClipboard(text, { 
+        fallbackMethod: true, 
+        timeout: 3000 
+      });
       
       if (result.success) {
-        // Copy succeeded, show checkmark for 1.1 seconds
+        // Copy succeeded - show checkmark for 2 seconds
         if (messageId) {
           setCopiedMessageIds(prev => new Set([...prev, messageId]));
           setTimeout(() => {
@@ -611,30 +621,14 @@ ${getFallbackResponse()}`;
               newSet.delete(messageId);
               return newSet;
             });
-          }, 1100);
+          }, 2000);
         }
       } else {
-        console.error('Failed to copy text:', result.error);
-        // Copy failed, try fallback
-        try {
-          const retryResult = await copyToClipboard(text, { fallbackMethod: true });
-          if (retryResult.success && messageId) {
-            // Retry succeeded, show checkmark for 1.1 seconds
-            setCopiedMessageIds(prev => new Set([...prev, messageId]));
-            setTimeout(() => {
-              setCopiedMessageIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(messageId);
-                return newSet;
-              });
-            }, 1100);
-          }
-        } catch (retryErr) {
-          console.error('Retry copy failed:', retryErr);
-        }
+        // Copy failed - just log the error, no visual feedback
+        console.error('Copy failed:', result.error);
       }
     } catch (err) {
-      console.error('Failed to copy text: ', err);
+      console.error('Copy operation failed:', err);
     }
   };
 

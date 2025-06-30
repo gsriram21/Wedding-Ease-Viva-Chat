@@ -24,6 +24,17 @@ async function copyWithClipboardAPI(text: string, timeout: number = 5000): Promi
       throw new Error('Clipboard API not available');
     }
 
+    // Check for permissions first
+    try {
+      const permission = await navigator.permissions?.query({ name: 'clipboard-write' as PermissionName });
+      if (permission && permission.state === 'denied') {
+        throw new Error('Clipboard permission denied by user');
+      }
+    } catch (permError) {
+      // Permissions API might not be available, continue anyway
+      console.debug('Could not check clipboard permissions:', permError);
+    }
+
     // Create a promise that rejects after timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Clipboard operation timed out')), timeout);
@@ -40,9 +51,24 @@ async function copyWithClipboardAPI(text: string, timeout: number = 5000): Promi
       message: 'Text copied to clipboard successfully'
     };
   } catch (error) {
+    let errorMessage = 'Unknown error occurred';
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      // Provide more user-friendly error messages
+      if (error.message.includes('denied') || error.message.includes('permission')) {
+        errorMessage = 'Clipboard access denied. Please allow clipboard permissions or try the manual copy method.';
+      } else if (error.message.includes('not allowed') || error.message.includes('user agent')) {
+        errorMessage = 'Clipboard access not allowed in this context. Please try clicking the copy button again.';
+      } else if (error.message.includes('timeout')) {
+        errorMessage = 'Copy operation timed out. Please try again.';
+      }
+    }
+    
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: errorMessage
     };
   }
 }
@@ -52,27 +78,46 @@ async function copyWithClipboardAPI(text: string, timeout: number = 5000): Promi
  */
 function copyWithExecCommand(text: string): CopyResult {
   try {
+    // Check if execCommand is available
+    if (!document.execCommand) {
+      throw new Error('execCommand not available');
+    }
+
     // Create a temporary textarea element
     const textArea = document.createElement('textarea');
     textArea.value = text;
     
-    // Position it off-screen
+    // Position it off-screen but ensure it's focusable
     textArea.style.position = 'fixed';
     textArea.style.left = '-9999px';
     textArea.style.top = '-9999px';
+    textArea.style.width = '1px';
+    textArea.style.height = '1px';
     textArea.style.opacity = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
     textArea.setAttribute('readonly', '');
+    textArea.setAttribute('tabindex', '-1');
+    textArea.setAttribute('aria-hidden', 'true');
     
     // Add to DOM
     document.body.appendChild(textArea);
     
-    // Select and copy
+    // Focus and select - critical for mobile browsers
+    textArea.focus();
     textArea.select();
-    textArea.setSelectionRange(0, 99999); // For mobile devices
     
+    // For mobile devices - ensure full selection
+    if (textArea.setSelectionRange) {
+      textArea.setSelectionRange(0, text.length);
+    }
+    
+    // Attempt copy
     const successful = document.execCommand('copy');
     
-    // Clean up
+    // Clean up immediately
     document.body.removeChild(textArea);
     
     if (successful) {
@@ -83,10 +128,16 @@ function copyWithExecCommand(text: string): CopyResult {
     } else {
       return {
         success: false,
-        error: 'Failed to copy text using fallback method'
+        error: 'Browser does not support clipboard copy operation'
       };
     }
   } catch (error) {
+    // Ensure cleanup even on error
+    const textArea = document.querySelector('textarea[aria-hidden="true"]');
+    if (textArea && textArea.parentNode) {
+      textArea.parentNode.removeChild(textArea);
+    }
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error in fallback copy'

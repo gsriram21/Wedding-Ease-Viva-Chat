@@ -41,6 +41,7 @@ describe('Clipboard Service', () => {
         select: jest.fn(),
         setSelectionRange: jest.fn(),
         setAttribute: jest.fn(),
+        focus: jest.fn(),
       } as unknown as HTMLTextAreaElement;
       
       const mockAppendChild = jest.fn();
@@ -103,6 +104,7 @@ describe('Clipboard Service', () => {
         select: jest.fn(),
         setSelectionRange: jest.fn(),
         setAttribute: jest.fn(),
+        focus: jest.fn(),
       } as unknown as HTMLTextAreaElement;
       
       document.createElement = jest.fn(() => mockTextArea) as any;
@@ -138,6 +140,7 @@ describe('Clipboard Service', () => {
         select: jest.fn(),
         setSelectionRange: jest.fn(),
         setAttribute: jest.fn(),
+        focus: jest.fn(),
       } as unknown as HTMLTextAreaElement;
       
       document.createElement = jest.fn(() => mockTextArea) as any;
@@ -148,7 +151,7 @@ describe('Clipboard Service', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Primary method failed: API failed');
-      expect(result.error).toContain('Fallback method failed: Failed to copy text using fallback method');
+      expect(result.error).toContain('Fallback method failed: Browser does not support clipboard copy operation');
     });
 
     it('should handle long messages (AI responses can be lengthy)', async () => {
