@@ -850,11 +850,11 @@ ${getFallbackResponse()}`;
     setIsStreaming(true);
     setStreamingMessageId(aiMessageId);
     
-    // Temporarily show loading state
+    // Start with empty text (no loading message)
     setMessages(prev =>
       prev.map(msg =>
         msg.id === aiMessageId
-          ? { ...msg, text: '🔄 Generating new response...' }
+          ? { ...msg, text: '' }
           : msg
       )
     );
@@ -1045,9 +1045,9 @@ ${getFallbackResponse()}`;
           );
         }
       } finally {
-        // Save the new version if generation completed successfully
-        if (accumulatedResponse && currentSessionId && !abortController.signal.aborted) {
-          // Add as new version instead of replacing
+        // Save the new version if any content was generated (even if incomplete)
+        if (accumulatedResponse && currentSessionId) {
+          // Add as new version instead of replacing (even for incomplete responses)
           addMessageVersion(currentSessionId, aiMessageId, accumulatedResponse);
           
           // Update local state to include version info
@@ -1416,43 +1416,42 @@ ${getFallbackResponse()}`;
                 </div>
               ) : (
                 <div className="max-w-[85%] text-gray-700 group">
-                  {/* Version navigation - show at top left if multiple versions exist */}
-                  {(() => {
-                    const versionNav = getVersionNavigation(message);
-                    return versionNav ? (
-                      <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={versionNav.goToPrevious}
-                          disabled={!versionNav.canGoPrevious}
-                          className="h-6 w-6 p-0 hover:bg-gray-100/30 rounded"
-                          title="Previous version"
-                        >
-                          <ChevronLeft className="h-3 w-3" />
-                        </Button>
-                        <span className="font-mono text-[10px] bg-gray-100/50 px-2 py-1 rounded">
-                          {versionNav.currentIndex + 1} / {versionNav.totalVersions}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={versionNav.goToNext}
-                          disabled={!versionNav.canGoNext}
-                          className="h-6 w-6 p-0 hover:bg-gray-100/30 rounded"
-                          title="Next version"
-                        >
-                          <ChevronRight className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : null;
-                  })()}
-                  
                   <div className="mb-2">
                     <MarkdownRenderer content={message.text} />
                   </div>
                   {/* Action buttons */}
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    {/* Version navigation - show inline with other buttons if multiple versions exist */}
+                    {(() => {
+                      const versionNav = getVersionNavigation(message);
+                      return versionNav ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={versionNav.goToPrevious}
+                            disabled={!versionNav.canGoPrevious}
+                            className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                            title="Previous version"
+                          >
+                            <ChevronLeft className="h-4 w-4 text-gray-500" />
+                          </Button>
+                          <span className="font-mono text-[10px] text-gray-500 px-0.5">
+                            {versionNav.currentIndex + 1}/{versionNav.totalVersions}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={versionNav.goToNext}
+                            disabled={!versionNav.canGoNext}
+                            className="h-8 w-8 p-0 hover:bg-gray-100/30 rounded-lg"
+                            title="Next version"
+                          >
+                            <ChevronRight className="h-4 w-4 text-gray-500" />
+                          </Button>
+                        </>
+                      ) : null;
+                    })()}
                     <Button
                       variant="ghost"
                       size="sm"
