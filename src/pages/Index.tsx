@@ -190,6 +190,59 @@ const Index = () => {
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const streamControllerRef = useRef<AbortController | null>(null);
 
+  // Auto-scroll functionality
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom function
+  const scrollToBottom = useCallback((smooth: boolean = true) => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: smooth ? 'smooth' : 'auto',
+        block: 'end'
+      });
+    }
+  }, []);
+
+  // Check if user is near bottom of chat
+  const isNearBottom = useCallback(() => {
+    if (!messagesContainerRef.current) return true;
+    
+    const container = messagesContainerRef.current;
+    const threshold = 100; // pixels from bottom
+    const isNear = container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
+    return isNear;
+  }, []);
+
+  // Auto-scroll during streaming - scroll as new content appears (only if user is near bottom)
+  useEffect(() => {
+    if (isStreaming && streamingMessageId && isNearBottom()) {
+      scrollToBottom(true);
+    }
+  }, [messages, isStreaming, streamingMessageId, scrollToBottom, isNearBottom]);
+
+  // Auto-scroll when switching chats - scroll to bottom immediately
+  useEffect(() => {
+    if (messages.length > 0) {
+      // Use a small delay to ensure DOM is updated after chat switch
+      const timeoutId = setTimeout(() => {
+        scrollToBottom(false); // No smooth scroll on chat switch for immediate positioning
+      }, 50);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [currentSessionId, scrollToBottom]);
+
+  // Auto-scroll when new messages are added (user messages)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      // If it's a user message or we're not currently streaming, scroll to bottom
+      if (lastMessage.sender === 'user' || !isStreaming) {
+        scrollToBottom(true);
+      }
+    }
+  }, [messages.length, scrollToBottom, isStreaming]);
+
   // URL state management functions
   const getSessionIdFromURL = useCallback((): string | null => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -1374,7 +1427,10 @@ ${getFallbackResponse()}`;
         <div className="py-6" />
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full relative z-10">
+        <div 
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full relative z-10"
+        >
           {messages.map((message) => (
             <div
               key={message.id}
@@ -1507,6 +1563,8 @@ ${getFallbackResponse()}`;
               )}
             </div>
           ))}
+          {/* Scroll anchor - invisible div at the bottom for auto-scroll */}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input area */}
