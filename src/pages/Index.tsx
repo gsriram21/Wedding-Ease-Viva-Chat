@@ -194,11 +194,50 @@ const Index = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // ChatGPT-style scroll: Focus on current conversation
-  const scrollToCurrentConversation = useCallback((smooth: boolean = true) => {
-    if (messages.length === 0) return;
+  // Alternative scroll method: Calculate position by message index
+  const scrollToMessageByIndex = useCallback((messageIndex: number, smooth: boolean = true) => {
+    if (!messagesContainerRef.current) {
+      console.warn('❌ No messages container ref');
+      return;
+    }
     
-    // Find the last user message to focus on the current conversation
+    const container = messagesContainerRef.current;
+    const allMessageElements = container.querySelectorAll('[data-message-id]');
+    
+    console.log('📋 Total message elements found:', allMessageElements.length);
+    console.log('🎯 Target message index:', messageIndex);
+    
+    if (messageIndex >= 0 && messageIndex < allMessageElements.length) {
+      const targetElement = allMessageElements[messageIndex] as HTMLElement;
+      const elementTop = targetElement.offsetTop;
+      const scrollPosition = elementTop - 20; // 20px padding from top
+      
+      console.log('🔄 Scrolling by index:', messageIndex, 'to position:', scrollPosition);
+      console.log('📍 Element offsetTop:', elementTop);
+      
+      if (smooth) {
+        container.scrollTo({
+          top: scrollPosition,
+          behavior: 'smooth'
+        });
+      } else {
+        container.scrollTop = scrollPosition;
+      }
+      
+      // Verify scroll happened
+      setTimeout(() => {
+        console.log('📊 After index scroll - scrollTop:', container.scrollTop);
+      }, smooth ? 500 : 100);
+    } else {
+      console.warn('❌ Invalid message index:', messageIndex, 'total elements:', allMessageElements.length);
+    }
+  }, []);
+
+  // ChatGPT-style scroll: Focus new user message at top, hide previous messages
+  const scrollToNewUserMessage = useCallback((smooth: boolean = true) => {
+    if (messages.length === 0 || !messagesContainerRef.current) return;
+    
+    // Find the last user message (the one just sent)
     let lastUserMessageIndex = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].sender === 'user') {
@@ -209,17 +248,54 @@ const Index = () => {
     
     if (lastUserMessageIndex === -1) return;
     
-    // Get the message element by its ID
+    // Get the message element by its ID - try multiple approaches
     const lastUserMessage = messages[lastUserMessageIndex];
-    const messageElement = document.querySelector(`[data-message-id="${lastUserMessage.id}"]`);
+    let messageElement = document.querySelector(`[data-message-id="${lastUserMessage.id}"]`);
     
-    if (messageElement) {
-      messageElement.scrollIntoView({
-        behavior: smooth ? 'smooth' : 'auto',
-        block: 'center' // Center the user message in viewport - ChatGPT style
-      });
+    // Fallback: try to find by text content if ID selector fails
+    if (!messageElement) {
+      const allMessages = messagesContainerRef.current.querySelectorAll('[data-message-id]');
+      messageElement = Array.from(allMessages).find(el => 
+        el.getAttribute('data-message-id') === lastUserMessage.id
+      );
     }
-  }, [messages]);
+    
+         if (messageElement) {
+       console.log('✅ Found message element for:', lastUserMessage.text.substring(0, 50));
+       console.log('📍 Element details:', {
+         id: lastUserMessage.id,
+         offsetTop: (messageElement as HTMLElement).offsetTop,
+         scrollHeight: messagesContainerRef.current?.scrollHeight,
+         clientHeight: messagesContainerRef.current?.clientHeight,
+         currentScrollTop: messagesContainerRef.current?.scrollTop
+       });
+       
+               // Method 1: Use scrollIntoView to position message at TOP of container
+        console.log('🎯 Using scrollIntoView with start alignment');
+        
+        messageElement.scrollIntoView({
+          behavior: smooth ? 'smooth' : 'auto',
+          block: 'start',    // Align to TOP of scrollable container
+          inline: 'nearest'
+        });
+        
+        // Verify scroll happened
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            console.log('📊 After scrollIntoView - scrollTop:', messagesContainerRef.current.scrollTop);
+          }
+        }, smooth ? 500 : 100);
+     } else {
+       console.warn('❌ Could not find message element for ID:', lastUserMessage.id);
+       console.log('🔍 Available message IDs:', 
+         Array.from(messagesContainerRef.current?.querySelectorAll('[data-message-id]') || [])
+           .map(el => el.getAttribute('data-message-id'))
+       );
+       console.log('🔄 Trying fallback scroll by index:', lastUserMessageIndex);
+       // Fallback: scroll by message index
+       scrollToMessageByIndex(lastUserMessageIndex, smooth);
+     }
+             }, [messages, scrollToMessageByIndex]);
 
   // Fallback scroll to bottom function (for chat switching)
   const scrollToBottom = useCallback((smooth: boolean = true) => {
@@ -231,12 +307,12 @@ const Index = () => {
     }
   }, []);
 
-  // Auto-scroll during streaming - focus on current conversation
+  // Auto-scroll during streaming - keep user message at top while AI responds
   useEffect(() => {
     if (isStreaming && streamingMessageId) {
-      scrollToCurrentConversation(true);
+      scrollToNewUserMessage(true);
     }
-  }, [messages, isStreaming, streamingMessageId, scrollToCurrentConversation]);
+  }, [messages, isStreaming, streamingMessageId, scrollToNewUserMessage]);
 
   // Auto-scroll when switching chats - scroll to bottom immediately
   useEffect(() => {
@@ -249,20 +325,54 @@ const Index = () => {
     }
   }, [currentSessionId, scrollToBottom]);
 
-  // Auto-scroll when new messages are added - ChatGPT style focusing
+  // Auto-scroll when new messages are added - ChatGPT style: new message at top
   useEffect(() => {
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
-      // When user sends a message, focus on that conversation
+      console.log('New message added:', lastMessage.sender, lastMessage.text.substring(0, 30));
+      
+      // When user sends a message, show ONLY that message at top (hide previous messages)
       if (lastMessage.sender === 'user') {
-        // Small delay to ensure DOM is updated
-        const timeoutId = setTimeout(() => {
-          scrollToCurrentConversation(true);
+        console.log('User message detected, scrolling to top...');
+        
+        // Test: Can we scroll at all?
+        if (messagesContainerRef.current) {
+          console.log('🧪 Testing scroll capability - current scrollTop:', messagesContainerRef.current.scrollTop);
+          console.log('🧪 Container scrollHeight:', messagesContainerRef.current.scrollHeight);
+          console.log('🧪 Container clientHeight:', messagesContainerRef.current.clientHeight);
+          
+          // Test: Force scroll to top immediately to see if container responds
+          console.log('🧪 Testing immediate scroll to top...');
+          messagesContainerRef.current.scrollTop = 0;
+          setTimeout(() => {
+            console.log('🧪 After immediate scroll - scrollTop:', messagesContainerRef.current?.scrollTop);
+          }, 50);
+        }
+        
+        // Multiple attempts with increasing delays to ensure DOM is updated
+        const timeoutId1 = setTimeout(() => {
+          console.log('🔄 First scroll attempt...');
+          scrollToNewUserMessage(true);
         }, 100);
-        return () => clearTimeout(timeoutId);
+        
+        const timeoutId2 = setTimeout(() => {
+          console.log('🔄 Second scroll attempt...');
+          scrollToNewUserMessage(false); // No smooth scroll for immediate positioning
+        }, 300);
+        
+        const timeoutId3 = setTimeout(() => {
+          console.log('🔄 Third scroll attempt...');
+          scrollToNewUserMessage(false);
+        }, 500);
+        
+                 return () => {
+           clearTimeout(timeoutId1);
+           clearTimeout(timeoutId2);
+           clearTimeout(timeoutId3);
+         };
       }
     }
-  }, [messages.length, scrollToCurrentConversation]);
+  }, [messages.length, scrollToNewUserMessage]);
 
   // URL state management functions
   const getSessionIdFromURL = useCallback((): string | null => {
